@@ -56,7 +56,7 @@ Reports that a testnet deployment can be drained are in scope as contract logic 
 
 ## What this project treats as a vulnerability
 
-In the contract: a missing or incorrect `require_auth`, an arithmetic overflow or underflow reachable from a public function, a storage entry that can be made permanently unreachable through TTL mishandling, a state transition that violates the specification in `docs/planning/system-prompt.md` section 7, or any input that causes a panic instead of returning a typed error.
+In the contract: a missing or incorrect `require_auth`, an arithmetic overflow or underflow reachable from a public function, a storage entry that can be made permanently unreachable through TTL mishandling, a state transition that violates the specification in `contracts/showcase/src/contract.rs` and its tests (the contract source is the specification), or any input that causes a panic instead of returning a typed error.
 
 In the decoder: any input that causes a panic, an unbounded allocation, or a non-terminating loop. The decoder's stated guarantee is that every decode failure returns an error variant, so a panic on malformed input is a bug, not expected behavior.
 
