@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+# Members join as their manifests land: contracts/showcase at build step 13,
+# crates/pulsar-decoder at build step 51. Cargo resolves these globs eagerly,
+# so workspace commands stay unresolvable until step 13.
+members = ["contracts/*", "crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "Apache-2.0"
+repository = "https://github.com/pulsar-stellar/pulsar-core"
+authors = ["Pulsar Stellar maintainers"]
+
+# Exact pin per the dependency policy for soroban and stellar crates.
+# Held at 26.1.0 stable by ADR-001. Do not move to 27.0.0-rc.
+[workspace.dependencies]
+soroban-sdk = "=26.1.0"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
+# Wasm release profile. Size and determinism matter more than compile time
+# because the artifact is uploaded to the ledger.
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
