@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push to the same branch cancels an in-flight run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Host tool version, per ADR-007. Not the project toolchain.
+  STELLAR_CLI_VERSION: 27.1.0
+
+jobs:
+  # Formatting, lints, and tests run on the project toolchain that
+  # rust-toolchain.toml pins. Nothing here selects a channel explicitly,
+  # so rustup honours the pin.
+  check:
+    name: fmt, clippy, test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Report toolchain
+        run: |
+          rustc --version
+          cargo --version
+          cargo fmt --version
+          cargo clippy --version
+
+      # The workspace declares members through globs that resolve to nothing
+      # until contracts/showcase lands at build step 13. Cargo fails on an
+      # unresolvable member, so the cargo steps below are gated on the manifest
+      # existing. The gate stops applying on its own once step 13 lands.
+      - name: Detect workspace members
+        id: members
+        run: |
+          if [ -f contracts/showcase/Cargo.toml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Scaffold phase::No workspace members yet. Cargo steps are skipped until build step 13 adds contracts/showcase."
+          fi
+
+      - name: Cache cargo registry and target
+        if: steps.members.outputs.present == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Check formatting
+        if: steps.members.outputs.present == 'true'
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        if: steps.members.outputs.present == 'true'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        if: steps.members.outputs.present == 'true'
+        run: cargo test --workspace
+
+  # The wasm build is a separate job because it needs stellar-cli, which
+  # compiles on the host stable channel rather than the project pin.
+  contract-build:
+    name: stellar contract build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Detect workspace members
+        id: members
+        run: |
+          if [ -f contracts/showcase/Cargo.toml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Scaffold phase::No contract yet. The wasm build is skipped until build step 13."
+          fi
+
+      # Cache the compiled binary rather than recompiling stellar-cli on every
+      # run. The key carries the version, so a version bump misses the cache
+      # and rebuilds exactly once.
+      - name: Cache stellar-cli binary
+        if: steps.members.outputs.present == 'true'
+        id: stellar-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cargo/bin/stellar
+          key: stellar-cli-${{ runner.os }}-${{ env.STELLAR_CLI_VERSION }}
+
+      # ADR-007: stellar-cli 27.1.0 needs rustc 1.93 or newer, while the project
+      # is pinned to 1.84.0. Installing from the repository root would use the
+      # pin and fail, so this runs from the home directory on the stable channel.
+      - name: Install stellar-cli on the host toolchain
+        if: steps.members.outputs.present == 'true' && steps.stellar-cache.outputs.cache-hit != 'true'
+        run: |
+          rustup toolchain install stable --profile minimal
+          cd ~
+          rustup run stable cargo install --locked --force \
+            --version "$STELLAR_CLI_VERSION" stellar-cli
+
+      - name: Report versions
+        if: steps.members.outputs.present == 'true'
+        run: |
+          stellar --version
+          rustc --version   # project pin, from rust-toolchain.toml
+
+      - name: Build contract wasm
+        if: steps.members.outputs.present == 'true'
+        run: stellar contract build
