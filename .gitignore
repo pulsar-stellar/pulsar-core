@@ -1,0 +1,26 @@
+# Build output. Cargo.lock is intentionally NOT ignored: this workspace ships a
+# deployable wasm artifact, so the lockfile is committed for reproducible builds.
+target/
+**/*.rs.bk
+
+# Wasm build artifacts emitted outside target/ by stellar contract build
+*.wasm
+
+# Environment files. Real values never enter the repo; .env.example carries
+# placeholders only and is tracked.
+.env
+.env.*
+!.env.example
+
+# Key material. Never committed under any circumstance. If one of these lands
+# by mistake, rotate the key, do not just delete the commit.
+*.pem
+*.key
+*.mnemonic
+secrets/
+identity/
+
+# Editor and OS noise
+.DS_Store
+*.swp
+.idea/
