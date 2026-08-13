@@ -65,13 +65,13 @@ Every claim in submission materials points at something real: a live URL, a depl
 
 ## 7. How to run things locally
 
-Toolchain. `rustup` reads `rust-toolchain.toml` and installs Rust 1.84.0 with the `wasm32v1-none` target on the first cargo command. stellar-cli is installed separately and is not managed by the toolchain file.
+Toolchain. `rustup` reads `rust-toolchain.toml` and installs Rust 1.84.0 with the `wasm32v1-none` target on the first cargo command. stellar-cli is a host binary tool, installed with the host stable channel rather than the project pin, per ADR-007. Running the install from inside this directory fails because stellar-cli needs rustc 1.93 or newer and the directory pins cargo to 1.84.0.
 
 ```sh
-cargo install --locked stellar-cli
+cd ~ && rustup run stable cargo install --locked --force stellar-cli
 
-rustc --version      # expect 1.84.0
-stellar --version    # expect 27.0.0 or newer
+rustc --version      # expect 1.84.0, the project pin
+stellar --version    # expect 27.1.0 or newer
 rustup target list --installed | grep wasm32v1-none
 ```
 
