@@ -105,7 +105,7 @@ jobs:
           key: stellar-cli-${{ runner.os }}-${{ env.STELLAR_CLI_VERSION }}
 
       # ADR-007: stellar-cli 27.1.0 needs rustc 1.93 or newer, while the project
-      # is pinned to 1.84.0. Installing from the repository root would use the
+      # is pinned to 1.92.0. Installing from the repository root would use the
       # pin and fail, so this runs from the home directory on the stable channel.
       - name: Install stellar-cli on the host toolchain
         if: steps.members.outputs.present == 'true' && steps.stellar-cache.outputs.cache-hit != 'true'

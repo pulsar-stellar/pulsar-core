@@ -65,12 +65,12 @@ Every claim in submission materials points at something real: a live URL, a depl
 
 ## 7. How to run things locally
 
-Toolchain. `rustup` reads `rust-toolchain.toml` and installs Rust 1.84.0 with the `wasm32v1-none` target on the first cargo command. stellar-cli is a host binary tool, installed with the host stable channel rather than the project pin, per ADR-007. Running the install from inside this directory fails because stellar-cli needs rustc 1.93 or newer and the directory pins cargo to 1.84.0.
+Toolchain. `rustup` reads `rust-toolchain.toml` and installs Rust 1.92.0 with the `wasm32v1-none` target on the first cargo command. That pin is the lowest version soroban-sdk 26.1.0 and stellar-cli 27.1.0 both accept, per ADR-009. stellar-cli is a host binary tool, installed with the host stable channel rather than the project pin, per ADR-007. Running the install from inside this directory fails because stellar-cli needs rustc 1.93 or newer and the directory pins cargo to 1.92.0.
 
 ```sh
 cd ~ && rustup run stable cargo install --locked --force stellar-cli
 
-rustc --version      # expect 1.84.0, the project pin
+rustc --version      # expect 1.92.0, the project pin
 stellar --version    # expect 27.1.0 or newer
 rustup target list --installed | grep wasm32v1-none
 ```
@@ -110,8 +110,10 @@ cargo llvm-cov --workspace   # floor is 85 percent line coverage
 
 ## 8. State at the time of writing
 
-Build steps 1 through 8 have landed. Next is step 10, seeding the ADR log.
+Build steps 1 through 13 have landed. Phase A is complete and Phase B has started. Next is step 14, the `contracterror` enum.
 
-The workspace compiles nothing yet: `Cargo.toml` declares members through globs that stay unresolvable until `contracts/showcase` lands at step 13. Cargo commands against the workspace fail until then, which is expected and not a defect.
+`contracts/showcase` exists and the workspace compiles. Its `src/lib.rs` is a stub carrying only a module doc comment: modules land across steps 14 through 27 and re-exports finalize at step 28, so expect the crate to hold orphan module files that nothing includes until then. See ADR-008.
 
-No contract code, no deployment, no published crate.
+`Cargo.lock` is committed. It holds `ed25519-dalek` at 2.2.0 because soroban-env-host declares an unbounded `>=2.0.0` requirement and 3.0.0 broke the trait bounds its own code relies on.
+
+No contract logic, no deployment, no published crate.

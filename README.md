@@ -31,7 +31,7 @@ The first release is `v0.1.0-contracts`, which ships the showcase contract deplo
 
 | Tool | Version |
 |---|---|
-| Rust, project toolchain | 1.84.0, pinned in `rust-toolchain.toml` |
+| Rust, project toolchain | 1.92.0, pinned in `rust-toolchain.toml` |
 | Rust, host toolchain | stable 1.93 or newer, for installing binary tools only |
 | Build target | `wasm32v1-none` |
 | soroban-sdk | 26.1.0, pinned exactly |

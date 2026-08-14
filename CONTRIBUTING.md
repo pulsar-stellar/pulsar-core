@@ -8,24 +8,24 @@ The discipline rules referred to above are restated in full in this file, under 
 
 ## Setup
 
-This project uses two Rust toolchains. The **project toolchain** is pinned at 1.84.0 and builds the contract. The **host toolchain** is your system stable channel and exists only to install binary tools. Do not merge them.
+This project uses two Rust toolchains. The **project toolchain** is pinned at 1.92.0 and builds the contract. The **host toolchain** is your system stable channel and exists only to install binary tools. Do not merge them.
 
 | Tool | Version | Install |
 |---|---|---|
-| Rust, project | 1.84.0 | `rustup` reads `rust-toolchain.toml` and installs it on the first cargo command |
+| Rust, project | 1.92.0 | `rustup` reads `rust-toolchain.toml` and installs it on the first cargo command |
 | `wasm32v1-none` target | matches toolchain | installed by the same toolchain file |
 | Rust, host | stable, 1.93 or newer | `rustup toolchain install stable` |
 | stellar-cli | 27.1.0 or newer | `cd ~ && rustup run stable cargo install --locked --force stellar-cli` |
 | Git | 2.40 or newer | platform specific |
 
-Installing stellar-cli from inside the project directory fails. It needs rustc 1.93 or newer to build, and the directory pins cargo to 1.84.0. The `cd ~` escapes the `rust-toolchain.toml` override and `rustup run stable` picks the host channel explicitly. Reasoning is in ADR-007 in `.agent/decisions.md`.
+Installing stellar-cli from inside the project directory fails. It needs rustc 1.93 or newer to build, and the directory pins cargo to 1.92.0. The `cd ~` escapes the `rust-toolchain.toml` override and `rustup run stable` picks the host channel explicitly. Reasoning is in ADR-007 in `.agent/decisions.md`.
 
 A prebuilt stellar-cli binary from the project's GitHub releases is a supported alternative if you would rather not compile it.
 
 Verify before you start:
 
 ```sh
-rustc --version      # expect 1.84.0, the project pin
+rustc --version      # expect 1.92.0, the project pin
 stellar --version    # expect 27.1.0 or newer
 rustup target list --installed | grep wasm32v1-none
 ```

@@ -112,7 +112,7 @@ Required on the developer machine before any sprint starts:
 |---|---|---|---|
 | Node.js | 20 LTS | `nvm install 20` | TS runtime |
 | pnpm | 9+ | `corepack enable && corepack prepare pnpm@latest --activate` | JS package manager |
-| Rust (project toolchain) | 1.84.0 exactly | pinned in `rust-toolchain.toml`, installed by rustup on the first cargo command | Contract + decoder builds, all in-project cargo commands, CI |
+| Rust (project toolchain) | 1.92.0 exactly | pinned in `rust-toolchain.toml`, installed by rustup on the first cargo command | Contract + decoder builds, all in-project cargo commands, CI |
 | Rust (host toolchain) | stable, 1.93+ | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` | Installing host binary tools only, never project builds |
 | Go | 1.23+ | Platform-specific (see go.dev/dl) | Indexer |
 | Stellar CLI | 27.1.0+ | `cd ~ && rustup run stable cargo install --locked --force stellar-cli` | Contract build + deploy |
@@ -121,7 +121,7 @@ Required on the developer machine before any sprint starts:
 | Git | 2.40+ | Platform-specific | Version control |
 | `gh` CLI | Latest | Platform-specific | Issue creation script |
 
-Two Rust rows, not one. stellar-cli 27.1.0 requires rustc 1.93.0 or newer to build, while the contract is pinned to 1.84.0 because that is the earliest stable Rust providing the `wasm32v1-none` target that soroban-sdk 26.1.0 needs. Running `cargo install --locked stellar-cli` from inside the project directory picks up the pinned 1.84 toolchain and fails. The `cd ~` moves out of the `rust-toolchain.toml` override and `rustup run stable` selects the host channel explicitly. See ADR-007 in `pulsar-core/.agent/decisions.md`.
+Two Rust rows, not one. stellar-cli 27.1.0 requires rustc 1.93.0 or newer to build, while the contract is pinned to 1.92.0, the lowest version that both clears soroban-sdk 26.1.0's declared MSRV of 1.91.0 and avoids stellar-cli's refusal to build contracts on 1.91.0 exactly. The `wasm32v1-none` target the contract needs arrived in 1.84 and is present in every later release, so the target does not constrain the pin upward or downward. Running `cargo install --locked stellar-cli` from inside the project directory picks up the pinned 1.92 toolchain and fails. The `cd ~` moves out of the `rust-toolchain.toml` override and `rustup run stable` selects the host channel explicitly. See ADR-007 in `pulsar-core/.agent/decisions.md`.
 
 Verification script at `pulsar-app/scripts/verify-toolchain.sh` runs `<tool> --version` for each and asserts minimum version. Runs at scaffold time and before every major sprint.
 
