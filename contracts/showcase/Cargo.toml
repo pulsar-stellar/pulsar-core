@@ -1,0 +1,26 @@
+[package]
+name = "pulsar-showcase"
+description = "Reference Soroban contract whose events are the Pulsar toolkit's test fixtures"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+doctest = false
+
+# soroban-sdk is pinned to =26.1.0 at the workspace root by ADR-001.
+[dependencies]
+soroban-sdk = { workspace = true }
+
+# testutils brings in the test Env, address generation, and event inspection.
+# It is a dev-dependency only: shipping it in the wasm would bloat the artifact.
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+
+[lints]
+workspace = true
