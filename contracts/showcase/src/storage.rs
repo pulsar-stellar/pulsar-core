@@ -14,6 +14,8 @@
 
 use soroban_sdk::{contracttype, Address, Env};
 
+use crate::error::Error;
+
 /// Ledgers in a day at Stellar's roughly five second close time.
 ///
 /// TTL is counted in ledgers, not wall-clock time, so every duration below is
@@ -76,4 +78,20 @@ pub(crate) fn extend_instance_ttl(env: &Env) {
     env.storage()
         .instance()
         .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+}
+
+/// Read the admin address.
+///
+/// Returns `NotInitialized` when no admin is stored, which is the case for a
+/// deployed but uninitialized contract. Converting the absent case into a typed
+/// error here means callers never see an `Option` and never have a reason to
+/// unwrap one.
+///
+/// Does not extend the instance TTL. Callers that change state already extend it
+/// at their entry point, and read views deliberately do not, per ADR-004.
+pub(crate) fn get_admin(env: &Env) -> Result<Address, Error> {
+    env.storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .ok_or(Error::NotInitialized)
 }
