@@ -1,9 +1,11 @@
 [workspace]
 resolver = "2"
-# Members join as their manifests land: contracts/showcase at build step 13,
-# crates/pulsar-decoder at build step 51. Cargo resolves these globs eagerly,
-# so workspace commands stay unresolvable until step 13.
-members = ["contracts/*", "crates/*"]
+# Cargo treats a glob matching zero directories as a literal path and fails to
+# load the workspace, so a glob is only listed once its directory has a member.
+# contracts/* resolves from build step 13. crates/* is restored at build step 51
+# when crates/pulsar-decoder lands, and that step must not forget the edit.
+# See ADR-008.
+members = ["contracts/*"]
 
 [workspace.package]
 version = "0.1.0"
