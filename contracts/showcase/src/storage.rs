@@ -95,3 +95,15 @@ pub(crate) fn get_admin(env: &Env) -> Result<Address, Error> {
         .get(&DataKey::Admin)
         .ok_or(Error::NotInitialized)
 }
+
+/// Write the admin address.
+///
+/// Deliberately does only the write. Instance storage shares one TTL with the
+/// contract instance, so the bump belongs at the public function's entry point
+/// through `extend_instance_ttl`, not here. Bumping in both places would be a
+/// redundant call that splits one responsibility across two layers. Contrast
+/// `set_balance`, where a persistent entry carries its own TTL and the extension
+/// does belong beside the write.
+pub(crate) fn set_admin(env: &Env, admin: &Address) {
+    env.storage().instance().set(&DataKey::Admin, admin);
+}
