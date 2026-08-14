@@ -43,6 +43,14 @@ Build the contract with `stellar contract build`. Never with plain `cargo build`
 
 Workspace members land in sequence as the build progresses, so a freshly cloned scaffold may contain fewer crates than the finished layout. The README records which artifacts exist at the current commit.
 
+### Cargo.lock
+
+`Cargo.lock` is committed and is not generated output you may freely overwrite. The contract wasm is uploaded to a ledger, so the build has to be reproducible: a transitive dependency shifting under us changes the artifact without changing a single line of our code. The lock file is what stops that.
+
+It is also load-bearing right now. soroban-env-host declares `ed25519-dalek = ">=2.0.0"` with no upper bound, and 3.0.0 shipped breaking `rand_core` trait changes that its own code cannot compile against. Without the lock, a fresh clone resolves to 3.0.0 and the build fails. The lock holds it at 2.2.0.
+
+Do not commit an incidental lock file update. If your change genuinely requires new or updated dependencies, land the lock change in its own commit whose message says which dependency moved and why, for example `build(deps): bump soroban-sdk to 26.2.0 for event topic fix`. A lock diff that appears alongside unrelated work will be sent back. Run `cargo build --locked` if you want to confirm your branch does not move it.
+
 ## Commit rules
 
 These are enforced, not stylistic preferences.
