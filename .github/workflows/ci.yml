@@ -104,16 +104,25 @@ jobs:
           path: ~/.cargo/bin/stellar
           key: stellar-cli-${{ runner.os }}-${{ env.STELLAR_CLI_VERSION }}
 
-      # ADR-007: stellar-cli 27.1.0 needs rustc 1.93 or newer, while the project
-      # is pinned to 1.92.0. Installing from the repository root would use the
-      # pin and fail, so this runs from the home directory on the stable channel.
-      - name: Install stellar-cli on the host toolchain
+      # ADR-007 lists a prebuilt binary as the acceptable stellar-cli install
+      # path for CI. Building it from crates.io pulls in libdbus-sys, which
+      # needs a system libdbus-1-dev the runner does not carry, and costs over
+      # four minutes even where it does work. The digest pins the exact
+      # artifact, so a swapped or truncated download fails here rather than
+      # silently producing a different binary.
+      - name: Install stellar-cli from the pinned release binary
         if: steps.members.outputs.present == 'true' && steps.stellar-cache.outputs.cache-hit != 'true'
+        env:
+          STELLAR_CLI_SHA256: 9915fe63753d7154c26bb9e6410cf1d1ff9727a9b378e663c2790ab7a266af94
         run: |
-          rustup toolchain install stable --profile minimal
-          cd ~
-          rustup run stable cargo install --locked --force \
-            --version "$STELLAR_CLI_VERSION" stellar-cli
+          set -euo pipefail
+          asset="stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          url="https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/${asset}"
+          curl -sSL --retry 3 --fail -o /tmp/stellar-cli.tar.gz "$url"
+          echo "${STELLAR_CLI_SHA256}  /tmp/stellar-cli.tar.gz" | sha256sum --check --strict
+          mkdir -p "$HOME/.cargo/bin"
+          tar -xzf /tmp/stellar-cli.tar.gz -C "$HOME/.cargo/bin" stellar
+          chmod +x "$HOME/.cargo/bin/stellar"
 
       - name: Report versions
         if: steps.members.outputs.present == 'true'
