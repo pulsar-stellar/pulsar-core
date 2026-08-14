@@ -1,5 +1,13 @@
+# Project toolchain. Host tools such as stellar-cli install on the host stable
+# channel instead, per ADR-007.
+#
+# 1.92.0 is the lowest version satisfying two constraints, per ADR-009:
+# soroban-sdk 26.1.0 declares an MSRV of 1.91.0, and stellar-cli 27.1.0 refuses
+# to build contracts on 1.91.0 exactly. The wasm32v1-none target below arrived
+# in 1.84 and is present in every later release, so the target decision in
+# ADR-002 is unaffected by this pin.
 [toolchain]
-channel = "1.84.0"
+channel = "1.92.0"
 components = ["rustfmt", "clippy"]
 targets = ["wasm32v1-none"]
 profile = "minimal"
