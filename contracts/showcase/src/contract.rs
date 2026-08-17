@@ -13,10 +13,10 @@
 // here, so it is disabled at module scope rather than per function.
 #![allow(clippy::needless_pass_by_value)]
 
-use soroban_sdk::{contract, contractimpl, Address, Env};
+use soroban_sdk::{contract, contractimpl, Address, Bytes, Env, Symbol};
 
 use crate::error::Error;
-use crate::events::{AdminChange, Deposit, Initialize, Transfer, Withdraw};
+use crate::events::{AdminChange, Deposit, EmitCustom, Initialize, Transfer, Withdraw};
 use crate::storage;
 
 /// The showcase contract.
@@ -190,6 +190,30 @@ impl PulsarShowcase {
             old_admin,
         }
         .publish(&env);
+
+        Ok(())
+    }
+
+    /// Emits an event carrying a caller-chosen tag and an opaque payload.
+    ///
+    /// Changes no state. It exists so the decoder has a fixture whose topic is
+    /// computed at run time rather than fixed at compile time, and whose payload
+    /// carries no type information.
+    ///
+    /// Authorization comes from the stored admin. An unauthenticated event-only
+    /// endpoint would let anyone write arbitrary entries into the event history
+    /// of the contract the whole toolkit tests against.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::NotInitialized` if no admin is stored yet.
+    pub fn emit_custom(env: Env, tag: Symbol, payload: Bytes) -> Result<(), Error> {
+        let admin = storage::get_admin(&env)?;
+        admin.require_auth();
+
+        storage::extend_instance_ttl(&env);
+
+        EmitCustom { tag, payload }.publish(&env);
 
         Ok(())
     }
