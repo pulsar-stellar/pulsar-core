@@ -115,10 +115,36 @@ pub(crate) fn set_admin(env: &Env, admin: &Address) {
     env.storage().instance().set(&DataKey::Admin, admin);
 }
 
+/// Read an address's balance.
+///
+/// An absent entry means zero. The contract never writes an explicit zero, so
+/// "no entry" and "zero balance" are the same state and `unwrap_or(0)` is the
+/// honest reading of it rather than a swallowed error.
+///
+/// Extends the entry's TTL only when the balance is positive. A persistent entry
+/// carries its own TTL, so a read that returns live value is exactly the moment
+/// worth paying to keep it alive. Extending on a zero read would create TTL cost
+/// for an entry that does not exist.
+pub(crate) fn get_balance(env: &Env, addr: &Address) -> i128 {
+    let key = DataKey::Balance(addr.clone());
+    let balance: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+
+    if balance > 0 {
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
+    balance
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::testutils::storage::Persistent as _;
+    use soroban_sdk::testutils::{Address as _, Ledger as _};
     use soroban_sdk::{contract, contractimpl};
 
     /// Minimal registered contract, present only to give the helpers an instance
@@ -150,6 +176,74 @@ mod tests {
             let admin = Address::generate(&env);
             set_admin(&env, &admin);
             assert_eq!(get_admin(&env), Ok(admin));
+        });
+    }
+
+    #[test]
+    fn get_balance_returns_zero_for_an_absent_key() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+
+        env.as_contract(&id, || {
+            let addr = Address::generate(&env);
+            assert_eq!(get_balance(&env, &addr), 0);
+            assert!(
+                !env.storage()
+                    .persistent()
+                    .has(&DataKey::Balance(addr.clone())),
+                "reading an absent balance must not create an entry"
+            );
+        });
+    }
+
+    #[test]
+    fn get_balance_returns_the_written_value() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+
+        env.as_contract(&id, || {
+            let addr = Address::generate(&env);
+            env.storage()
+                .persistent()
+                .set(&DataKey::Balance(addr.clone()), &4_200_i128);
+            assert_eq!(get_balance(&env, &addr), 4_200);
+        });
+    }
+
+    #[test]
+    fn get_balance_extends_ttl_only_when_the_balance_is_positive() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+
+        env.as_contract(&id, || {
+            let holder = Address::generate(&env);
+            let key = DataKey::Balance(holder.clone());
+
+            // Write a positive balance, then let its TTL decay by advancing the
+            // ledger far enough to drop it under the extension threshold.
+            env.storage().persistent().set(&key, &1_i128);
+            env.ledger()
+                .set_sequence_number(env.ledger().sequence() + DAY_IN_LEDGERS * 2);
+            let decayed = env.storage().persistent().get_ttl(&key);
+            assert!(
+                decayed < PERSISTENT_BUMP_AMOUNT,
+                "TTL should have decayed before the read under test"
+            );
+
+            // A positive balance read bumps the entry back to the full window.
+            assert_eq!(get_balance(&env, &holder), 1);
+            assert_eq!(
+                env.storage().persistent().get_ttl(&key),
+                PERSISTENT_BUMP_AMOUNT
+            );
+
+            // A zero balance read creates nothing and so extends nothing.
+            let empty = Address::generate(&env);
+            assert_eq!(get_balance(&env, &empty), 0);
+            assert!(
+                !env.storage().persistent().has(&DataKey::Balance(empty)),
+                "a zero read must not create or extend an entry"
+            );
         });
     }
 }
