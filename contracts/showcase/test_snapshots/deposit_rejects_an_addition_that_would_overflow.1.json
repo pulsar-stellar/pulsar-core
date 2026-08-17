@@ -1,6 +1,6 @@
 {
   "generators": {
-    "address": 4,
+    "address": 3,
     "nonce": 0,
     "mux_id": 0
   },
@@ -38,7 +38,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "i128": "500"
+                  "i128": "170141183460469231731687303715884105727"
                 }
               ]
             }
@@ -47,7 +47,6 @@
         }
       ]
     ],
-    [],
     []
   ],
   "ledger": {
@@ -79,7 +78,7 @@
               },
               "durability": "persistent",
               "val": {
-                "i128": "500"
+                "i128": "170141183460469231731687303715884105727"
               }
             }
           },

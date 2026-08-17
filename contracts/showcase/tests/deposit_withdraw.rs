@@ -172,3 +172,21 @@ fn withdraw_rejects_an_amount_above_the_balance() {
         Err(Ok(Error::InsufficientBalance))
     );
 }
+
+#[test]
+fn deposit_rejects_an_addition_that_would_overflow() {
+    let (env, _id, client) = setup();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let holder = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    // Reached through the public API rather than by writing storage directly:
+    // the first deposit is legal and leaves no headroom for the second.
+    client.deposit(&holder, &i128::MAX);
+    assert_eq!(
+        client.try_deposit(&holder, &1),
+        Err(Ok(Error::AmountOutOfRange))
+    );
+}
