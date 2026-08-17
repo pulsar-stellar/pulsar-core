@@ -16,7 +16,7 @@
 use soroban_sdk::{contract, contractimpl, Address, Env};
 
 use crate::error::Error;
-use crate::events::{Deposit, Initialize, Transfer, Withdraw};
+use crate::events::{AdminChange, Deposit, Initialize, Transfer, Withdraw};
 use crate::storage;
 
 /// The showcase contract.
@@ -165,6 +165,31 @@ impl PulsarShowcase {
         storage::set_balance(&env, &to, credited);
 
         Transfer { from, to, amount }.publish(&env);
+
+        Ok(())
+    }
+
+    /// Replaces the admin address.
+    ///
+    /// Authorization comes from the admin currently stored, not from any address
+    /// the caller supplies. Trusting an argument here would let anyone name
+    /// themselves and seize the contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::NotInitialized` if no admin is stored yet.
+    pub fn set_admin(env: Env, new_admin: Address) -> Result<(), Error> {
+        let old_admin = storage::get_admin(&env)?;
+        old_admin.require_auth();
+
+        storage::extend_instance_ttl(&env);
+        storage::set_admin(&env, &new_admin);
+
+        AdminChange {
+            new_admin,
+            old_admin,
+        }
+        .publish(&env);
 
         Ok(())
     }
