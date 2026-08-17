@@ -16,7 +16,7 @@
 use soroban_sdk::{contract, contractimpl, Address, Env};
 
 use crate::error::Error;
-use crate::events::Initialize;
+use crate::events::{Deposit, Initialize};
 use crate::storage;
 
 /// The showcase contract.
@@ -53,6 +53,37 @@ impl PulsarShowcase {
         storage::set_admin(&env, &admin);
 
         Initialize { admin }.publish(&env);
+
+        Ok(())
+    }
+
+    /// Credits an address's balance by `amount`.
+    ///
+    /// Requires authorization from the depositing address, so a caller cannot
+    /// credit an account that has not consented to the deposit.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::NotInitialized` if the contract has no admin yet, and
+    /// `Error::InvalidAmount` if `amount` is not positive.
+    pub fn deposit(env: Env, from: Address, amount: i128) -> Result<(), Error> {
+        from.require_auth();
+
+        if !storage::is_initialized(&env) {
+            return Err(Error::NotInitialized);
+        }
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        storage::extend_instance_ttl(&env);
+
+        let updated = storage::get_balance(&env, &from)
+            .checked_add(amount)
+            .ok_or(Error::InvalidAmount)?;
+        storage::set_balance(&env, &from, updated);
+
+        Deposit { from, amount }.publish(&env);
 
         Ok(())
     }
