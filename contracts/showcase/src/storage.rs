@@ -60,6 +60,13 @@ pub(crate) const PERSISTENT_LIFETIME_THRESHOLD: u32 = PERSISTENT_BUMP_AMOUNT - D
 pub enum DataKey {
     /// Instance storage. Set once by `initialize` and never cleared, so its
     /// presence is what distinguishes an initialized contract from a fresh one.
+    ///
+    /// Declared but unread until Phase C step 29, where `initialize` writes it
+    /// through `set_initialized` and reads it through `is_initialized` to tell
+    /// `AlreadyInitialized` apart from `NotInitialized`. Those helpers land with
+    /// their caller rather than ahead of it, per ADR-011. Note that `get_admin`
+    /// does not consult this flag: an absent `Admin` already implies an
+    /// uninitialized contract, since the two are written together.
     Initialized,
     /// Instance storage. The address authorized for admin-only operations.
     Admin,
