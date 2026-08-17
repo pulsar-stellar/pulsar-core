@@ -86,6 +86,21 @@ pub struct Transfer {
     pub amount: i128,
 }
 
+/// Records rotation of the admin address.
+///
+/// Topics are the Symbol `admin_change` followed by the incoming admin, and data
+/// is the outgoing admin as a bare `Address`. The asymmetry is deliberate: a
+/// consumer can filter for "who holds authority now" without decoding payloads,
+/// which is the question auditors ask, while reconstructing the full chain of
+/// past holders requires reading the data field of each event in sequence.
+#[contractevent(topics = ["admin_change"], data_format = "single-value")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminChange {
+    #[topic]
+    pub new_admin: Address,
+    pub old_admin: Address,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,6 +220,35 @@ mod tests {
                     id.clone(),
                     (Symbol::new(&env, "transfer"), from.clone(), to.clone()).into_val(&env),
                     900_i128.into_val(&env),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn admin_change_publishes_new_admin_as_topic_and_old_as_data() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+        let old_admin = Address::generate(&env);
+        let new_admin = Address::generate(&env);
+
+        env.as_contract(&id, || {
+            AdminChange {
+                new_admin: new_admin.clone(),
+                old_admin: old_admin.clone(),
+            }
+            .publish(&env);
+        });
+
+        // The incoming admin is the queryable topic; the outgoing one is payload.
+        assert_eq!(
+            env.events().all(),
+            vec![
+                &env,
+                (
+                    id.clone(),
+                    (Symbol::new(&env, "admin_change"), new_admin.clone()).into_val(&env),
+                    old_admin.into_val(&env),
                 ),
             ]
         );
