@@ -29,7 +29,7 @@
 // contract.rs adds the calls.
 #![allow(dead_code)]
 
-use soroban_sdk::{contractevent, Address};
+use soroban_sdk::{contractevent, Address, Bytes, Symbol};
 
 /// Marks successful contract initialization.
 ///
@@ -99,6 +99,31 @@ pub struct AdminChange {
     #[topic]
     pub new_admin: Address,
     pub old_admin: Address,
+}
+
+/// Records a caller-supplied event with a runtime-chosen tag.
+///
+/// Topics are the Symbol `custom` followed by the caller's tag, and data is an
+/// opaque `Bytes` payload. Unlike every other event here, the second topic is not
+/// fixed at compile time: the tag is a function argument, so the emitted topic
+/// varies per call.
+///
+/// That is the point of the event. A decoder tested only against events whose
+/// topics are known statically can pass its whole suite and still fail on the
+/// first contract that computes a topic, and an opaque byte payload is the case
+/// where the decoder has no type information to lean on. This event exists to
+/// give both cases a fixture drawn from a real emission rather than hand-built
+/// XDR.
+///
+/// The wire Symbol is `custom` rather than the type name, pinned by the topics
+/// annotation, so the Rust type can be named for local clarity without moving
+/// the wire contract.
+#[contractevent(topics = ["custom"], data_format = "single-value")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmitCustom {
+    #[topic]
+    pub tag: Symbol,
+    pub payload: Bytes,
 }
 
 #[cfg(test)]
@@ -249,6 +274,71 @@ mod tests {
                     id.clone(),
                     (Symbol::new(&env, "admin_change"), new_admin.clone()).into_val(&env),
                     old_admin.into_val(&env),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn emit_custom_publishes_runtime_tag_as_topic_with_opaque_payload() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+        let payload = Bytes::from_array(&env, &[0xDE, 0xAD, 0xBE, 0xEF]);
+
+        env.as_contract(&id, || {
+            EmitCustom {
+                tag: Symbol::new(&env, "settled"),
+                payload: payload.clone(),
+            }
+            .publish(&env);
+        });
+
+        assert_eq!(
+            env.events().all(),
+            vec![
+                &env,
+                (
+                    id.clone(),
+                    (Symbol::new(&env, "custom"), Symbol::new(&env, "settled")).into_val(&env),
+                    payload.clone().into_val(&env),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn emit_custom_topic_varies_with_the_tag_argument() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+        let payload = Bytes::from_array(&env, &[0x01]);
+
+        // Two calls differing only in the tag must produce two different topic
+        // tuples. A statically fixed topic would make these identical, which is
+        // the case the decoder has to handle and cannot be proven by a single
+        // emission.
+        env.as_contract(&id, || {
+            for tag in ["opened", "closed"] {
+                EmitCustom {
+                    tag: Symbol::new(&env, tag),
+                    payload: payload.clone(),
+                }
+                .publish(&env);
+            }
+        });
+
+        assert_eq!(
+            env.events().all(),
+            vec![
+                &env,
+                (
+                    id.clone(),
+                    (Symbol::new(&env, "custom"), Symbol::new(&env, "opened")).into_val(&env),
+                    payload.clone().into_val(&env),
+                ),
+                (
+                    id.clone(),
+                    (Symbol::new(&env, "custom"), Symbol::new(&env, "closed")).into_val(&env),
+                    payload.clone().into_val(&env),
                 ),
             ]
         );
