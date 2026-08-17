@@ -363,3 +363,65 @@ The two-toolchain model holds unchanged: the project toolchain is pinned in `rus
 - The two-toolchain model is validated rather than weakened by this correction. stellar-cli still needs 1.93 or newer to build itself while the contract builds on 1.92.0, so the two pins remain genuinely different and the separation is real.
 - The pin is now traceable to a published manifest and a verified tool constraint rather than to reasoning about target availability. Future SDK bumps are checked against the SDK's declared `rust-version` and against stellar-cli's blocklist by running `stellar contract build` before the toolchain file is considered settled.
 - A toolchain pin is not proven by cargo alone. `stellar contract build` is part of the verification set, because it enforces constraints cargo knows nothing about.
+
+---
+
+*ADR-010 through ADR-017 are reserved for entries drafted during Phase B and Phase
+C that have not yet been written up. The numbers are held so that references to
+them in commit messages and source comments stay valid when they land.*
+
+---
+
+## ADR-018: Remove the Unauthorized error variant
+Date: 2026-08-17
+Status: accepted
+
+### Context
+
+The error enum shipped with an `Unauthorized` variant on discriminant 3, intended
+for callers who are not the admin. Implementing `set_admin` showed it can never be
+returned.
+
+Authorization is enforced with `require_auth`, which is checked by the host. When
+it fails, the host raises the failure itself and the contract function never runs
+to completion, so no code path can construct `Error::Unauthorized`. The failure
+surfaces to a caller as a host invocation error rather than as a contract error
+value. Both of `set_admin`'s authorization tests assert `is_err()` for this
+reason: there is no typed variant to match against.
+
+A variant no code can return is a false promise. A consumer writing a match arm
+for it would be writing dead code, and the release criterion requiring every
+variant to be triggered by a test could not be met.
+
+### Decision
+
+Remove `Unauthorized`. The remaining variants are compacted to 1 through 4:
+`AlreadyInitialized`, `NotInitialized`, `InsufficientBalance`, `AmountOutOfRange`.
+
+Compacting rather than leaving a hole is safe only because the contract has not
+been deployed. Discriminants are wire-visible, so from the first deployment
+onward the numbering is frozen and a removed variant would leave its number
+retired rather than reused. The module doc in `error.rs` states this.
+
+### Alternatives considered
+
+**Keep it as a reserved variant.** Rejected. It documents an error the contract
+cannot produce, and the release criterion would need weakening from "every
+variant" to "every reachable variant" to accommodate one unreachable entry.
+
+**Add a code path that returns it**, comparing the caller against the stored admin
+explicitly rather than relying on `require_auth`. Rejected, and it is the more
+dangerous option: hand-rolled address comparison is precisely the pattern the auth
+rule warns against, and it would duplicate a check the host already performs
+correctly. Reachability is not worth a weaker guard.
+
+### Consequences
+
+- The enum contains only variants a caller can actually receive.
+- Authorization failures are host errors. Tests assert `is_err()` rather than
+  matching a variant, and the comment at each site says so.
+- Any future function authorizing against stored state follows the same pattern
+  and needs no new variant.
+- Discriminants are frozen from first deployment. This is the last commit in which
+  renumbering is available.
+

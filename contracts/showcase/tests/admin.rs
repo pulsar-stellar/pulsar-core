@@ -59,6 +59,9 @@ fn set_admin_rejects_a_caller_who_is_not_the_admin() {
         }])
         .try_set_admin(&attacker);
 
+    // A require_auth rejection is raised by the host, so it arrives as an
+    // invocation error rather than as a typed Error variant. There is no
+    // Unauthorized to match against, by design. See ADR-018.
     assert!(
         result.is_err(),
         "rotation must not succeed on a non-admin's authorization"
@@ -111,6 +114,7 @@ fn set_admin_transfers_authority_to_the_new_admin() {
         }])
         .try_set_admin(&admin);
 
+    // Host-raised auth failure again, hence is_err() rather than a variant match.
     assert!(
         result.is_err(),
         "a replaced admin must not retain authority"
