@@ -326,4 +326,29 @@ mod tests {
             assert_eq!(get_balance(&env, &addr), 25);
         });
     }
+
+    #[test]
+    fn set_balance_writes_to_persistent_datakey_balance() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+
+        env.as_contract(&id, || {
+            let addr = Address::generate(&env);
+            set_balance(&env, &addr, 99);
+
+            // Read through the SDK rather than get_balance. A round-trip test
+            // cannot catch the two helpers agreeing on the wrong key, so this
+            // one names the storage class and key variant explicitly.
+            let stored: Option<i128> = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Balance(addr.clone()));
+            assert_eq!(stored, Some(99));
+
+            assert!(
+                !env.storage().instance().has(&DataKey::Balance(addr)),
+                "balances belong in persistent storage, not instance"
+            );
+        });
+    }
 }
