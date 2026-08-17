@@ -190,3 +190,25 @@ fn deposit_rejects_an_addition_that_would_overflow() {
         Err(Ok(Error::AmountOutOfRange))
     );
 }
+
+#[test]
+fn withdraw_rejects_non_positive_amounts() {
+    let (env, _id, client) = setup();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let holder = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.deposit(&holder, &500);
+
+    // Symmetric with the deposit case. A funded balance is used so the rejection
+    // comes from the amount guard rather than from an insufficient balance.
+    assert_eq!(
+        client.try_withdraw(&holder, &0),
+        Err(Ok(Error::AmountOutOfRange))
+    );
+    assert_eq!(
+        client.try_withdraw(&holder, &-1),
+        Err(Ok(Error::AmountOutOfRange))
+    );
+}
