@@ -12,6 +12,13 @@
 //! topic marking, or the data format is a breaking change even when the
 //! contract's own behavior is unaffected.
 //!
+//! Both annotations on each event are deliberate. `topics` names the leading
+//! wire Symbol explicitly rather than deriving it from the Rust type name, so
+//! renaming a struct cannot silently change the wire contract. `data_format`
+//! is explicit because the macro's default is `Map` regardless of field count,
+//! which would encode a single payload as a map keyed by field name instead of
+//! the bare value the decoder expects.
+//!
 //! Schema version discrimination deliberately does not appear in topics. It
 //! belongs to the decoder, which inspects the contract spec at deserialize time.
 //! A version topic alongside that would be a second, independently driftable
@@ -30,7 +37,7 @@ use soroban_sdk::{contractevent, Address};
 /// bare `Address` by `data_format = "single-value"` rather than the default map
 /// keyed by field name. The decoder treats this as the canonical initialization
 /// marker for the contract.
-#[contractevent(data_format = "single-value")]
+#[contractevent(topics = ["initialize"], data_format = "single-value")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Initialize {
     pub admin: Address,
@@ -41,11 +48,24 @@ pub struct Initialize {
 /// Topics are the Symbol `deposit` followed by the depositing address, so a
 /// consumer can follow one account's deposits without decoding every event on
 /// the contract. Data is the deposited amount as a bare `i128`.
-#[contractevent(data_format = "single-value")]
+#[contractevent(topics = ["deposit"], data_format = "single-value")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Deposit {
     #[topic]
     pub from: Address,
+    pub amount: i128,
+}
+
+/// Records a withdrawal debiting an address's balance.
+///
+/// Mirrors `Deposit`: topics are the Symbol `withdraw` followed by the
+/// withdrawing address, and data is the amount as a bare `i128`. The two share a
+/// shape so a consumer can treat balance movement uniformly.
+#[contractevent(topics = ["withdraw"], data_format = "single-value")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Withdraw {
+    #[topic]
+    pub to: Address,
     pub amount: i128,
 }
 
@@ -111,6 +131,33 @@ mod tests {
                     id.clone(),
                     (Symbol::new(&env, "deposit"), from.clone()).into_val(&env),
                     250_i128.into_val(&env),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn withdraw_publishes_expected_topics_and_data() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+        let to = Address::generate(&env);
+
+        env.as_contract(&id, || {
+            Withdraw {
+                to: to.clone(),
+                amount: 175,
+            }
+            .publish(&env);
+        });
+
+        assert_eq!(
+            env.events().all(),
+            vec![
+                &env,
+                (
+                    id.clone(),
+                    (Symbol::new(&env, "withdraw"), to.clone()).into_val(&env),
+                    175_i128.into_val(&env),
                 ),
             ]
         );
