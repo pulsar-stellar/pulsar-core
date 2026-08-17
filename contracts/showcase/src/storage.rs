@@ -107,3 +107,42 @@ pub(crate) fn get_admin(env: &Env) -> Result<Address, Error> {
 pub(crate) fn set_admin(env: &Env, admin: &Address) {
     env.storage().instance().set(&DataKey::Admin, admin);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{contract, contractimpl};
+
+    /// Minimal registered contract, present only to give the helpers an instance
+    /// context. Instance storage reads fail against an address with no
+    /// registered contract behind it, so a harness is required even for tests
+    /// that never call a public function.
+    #[contract]
+    struct Harness;
+
+    #[contractimpl]
+    impl Harness {}
+
+    #[test]
+    fn get_admin_returns_not_initialized_on_empty_instance_store() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+
+        env.as_contract(&id, || {
+            assert_eq!(get_admin(&env), Err(Error::NotInitialized));
+        });
+    }
+
+    #[test]
+    fn get_admin_returns_the_stored_admin_once_set() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+
+        env.as_contract(&id, || {
+            let admin = Address::generate(&env);
+            set_admin(&env, &admin);
+            assert_eq!(get_admin(&env), Ok(admin));
+        });
+    }
+}
