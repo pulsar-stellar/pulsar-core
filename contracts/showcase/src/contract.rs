@@ -227,4 +227,17 @@ impl PulsarShowcase {
     pub fn balance(env: Env, of: Address) -> i128 {
         storage::read_balance(&env, &of)
     }
+
+    /// Reports the current admin address.
+    ///
+    /// A read view. No authorization is required, since who holds authority is
+    /// public ledger state, and the instance TTL is not extended: observing the
+    /// contract is not a reason to keep it alive.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::NotInitialized` if no admin is stored yet.
+    pub fn admin(env: Env) -> Result<Address, Error> {
+        storage::get_admin(&env)
+    }
 }

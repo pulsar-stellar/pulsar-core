@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use pulsar_showcase::{PulsarShowcase, PulsarShowcaseClient};
+use pulsar_showcase::{Error, PulsarShowcase, PulsarShowcaseClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};
 
@@ -65,4 +65,35 @@ fn balance_reflects_a_withdrawal() {
     client.withdraw(&holder, &175);
 
     assert_eq!(client.balance(&holder), 325);
+}
+
+#[test]
+fn admin_reports_the_address_set_at_initialization() {
+    let (env, _id, client) = setup();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    assert_eq!(client.admin(), admin);
+}
+
+#[test]
+fn admin_fails_on_an_uninitialized_contract() {
+    let (_env, _id, client) = setup();
+
+    assert_eq!(client.try_admin(), Err(Ok(Error::NotInitialized)));
+}
+
+#[test]
+fn admin_reports_the_new_address_after_rotation() {
+    let (env, _id, client) = setup();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let next = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.set_admin(&next);
+
+    assert_eq!(client.admin(), next);
 }
