@@ -16,7 +16,7 @@
 use soroban_sdk::{contract, contractimpl, Address, Env};
 
 use crate::error::Error;
-use crate::events::{Deposit, Initialize, Withdraw};
+use crate::events::{Deposit, Initialize, Transfer, Withdraw};
 use crate::storage;
 
 /// The showcase contract.
@@ -118,6 +118,53 @@ impl PulsarShowcase {
         storage::set_balance(&env, &to, balance - amount);
 
         Withdraw { to, amount }.publish(&env);
+
+        Ok(())
+    }
+
+    /// Moves `amount` from one address's balance to another's.
+    ///
+    /// Requires authorization from the sending address. The recipient does not
+    /// authorize: receiving value is not a burden they need to consent to, which
+    /// is also what SEP-41 specifies.
+    ///
+    /// A transfer to oneself is permitted and leaves the balance unchanged.
+    /// Rejecting it would add an error path for a case with no economic effect
+    /// and no fraud potential, and consumers that care can compare the topics.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::NotInitialized` if the contract has no admin yet,
+    /// `Error::AmountOutOfRange` if `amount` is not positive, and
+    /// `Error::InsufficientBalance` if the sender's balance is below `amount`.
+    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), Error> {
+        from.require_auth();
+
+        if !storage::is_initialized(&env) {
+            return Err(Error::NotInitialized);
+        }
+        if amount <= 0 {
+            return Err(Error::AmountOutOfRange);
+        }
+
+        storage::extend_instance_ttl(&env);
+
+        let from_balance = storage::get_balance(&env, &from);
+        if amount > from_balance {
+            return Err(Error::InsufficientBalance);
+        }
+        storage::set_balance(&env, &from, from_balance - amount);
+
+        // Read the recipient's balance after writing the sender's. When from and
+        // to are the same address, reading both up front would credit a stale
+        // figure and inflate the balance.
+        let to_balance = storage::get_balance(&env, &to);
+        let credited = to_balance
+            .checked_add(amount)
+            .ok_or(Error::AmountOutOfRange)?;
+        storage::set_balance(&env, &to, credited);
+
+        Transfer { from, to, amount }.publish(&env);
 
         Ok(())
     }
