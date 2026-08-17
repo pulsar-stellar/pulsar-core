@@ -22,6 +22,8 @@ pub enum Error {
     Unauthorized = 3,
     /// The withdrawal or transfer exceeds the sender's stored balance.
     InsufficientBalance = 4,
-    /// An amount argument was zero or negative. Amounts must be positive.
-    InvalidAmount = 5,
+    /// An amount argument was zero or negative, or the operation's result would
+    /// fall outside the range an `i128` balance can hold. Both are the same
+    /// failure from a caller's view: the amount cannot be applied as given.
+    AmountOutOfRange = 5,
 }

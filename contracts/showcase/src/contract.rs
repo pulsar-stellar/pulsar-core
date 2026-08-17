@@ -65,7 +65,8 @@ impl PulsarShowcase {
     /// # Errors
     ///
     /// Returns `Error::NotInitialized` if the contract has no admin yet, and
-    /// `Error::InvalidAmount` if `amount` is not positive.
+    /// `Error::AmountOutOfRange` if `amount` is not positive, or if crediting it
+    /// would overflow the stored balance.
     pub fn deposit(env: Env, from: Address, amount: i128) -> Result<(), Error> {
         from.require_auth();
 
@@ -73,14 +74,14 @@ impl PulsarShowcase {
             return Err(Error::NotInitialized);
         }
         if amount <= 0 {
-            return Err(Error::InvalidAmount);
+            return Err(Error::AmountOutOfRange);
         }
 
         storage::extend_instance_ttl(&env);
 
         let updated = storage::get_balance(&env, &from)
             .checked_add(amount)
-            .ok_or(Error::InvalidAmount)?;
+            .ok_or(Error::AmountOutOfRange)?;
         storage::set_balance(&env, &from, updated);
 
         Deposit { from, amount }.publish(&env);
