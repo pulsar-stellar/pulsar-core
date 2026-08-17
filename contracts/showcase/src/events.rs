@@ -69,6 +69,23 @@ pub struct Withdraw {
     pub amount: i128,
 }
 
+/// Records a transfer moving value between two addresses.
+///
+/// Topics are the Symbol `transfer` followed by the sending and receiving
+/// addresses, in that order, and data is the amount as a bare `i128`. Topic
+/// order follows field declaration order and is fixed: this is the SEP-41
+/// conformance shape, so wallets and indexers already match on it and a
+/// reordering here would break them silently.
+#[contractevent(topics = ["transfer"], data_format = "single-value")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Transfer {
+    #[topic]
+    pub from: Address,
+    #[topic]
+    pub to: Address,
+    pub amount: i128,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,6 +175,36 @@ mod tests {
                     id.clone(),
                     (Symbol::new(&env, "withdraw"), to.clone()).into_val(&env),
                     175_i128.into_val(&env),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn transfer_publishes_sep41_topic_order_and_data() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+        let from = Address::generate(&env);
+        let to = Address::generate(&env);
+
+        env.as_contract(&id, || {
+            Transfer {
+                from: from.clone(),
+                to: to.clone(),
+                amount: 900,
+            }
+            .publish(&env);
+        });
+
+        // from precedes to. SEP-41 consumers match on that order.
+        assert_eq!(
+            env.events().all(),
+            vec![
+                &env,
+                (
+                    id.clone(),
+                    (Symbol::new(&env, "transfer"), from.clone(), to.clone()).into_val(&env),
+                    900_i128.into_val(&env),
                 ),
             ]
         );
