@@ -140,6 +140,27 @@ pub(crate) fn get_balance(env: &Env, addr: &Address) -> i128 {
     balance
 }
 
+/// Write an address's balance.
+///
+/// Extends the entry's TTL immediately after the write, per ADR-013. A
+/// persistent entry carries its own TTL, so the bump belongs beside the write
+/// that creates or refreshes it. This is the deliberate counterpart to
+/// `set_admin`, which does not extend, because instance storage shares one TTL
+/// bumped once at the public function's entry point.
+///
+/// The extension is unconditional here, unlike in `get_balance`. A write always
+/// leaves a live entry worth keeping, including a write of zero, which is why
+/// callers avoid storing explicit zeros in the first place.
+pub(crate) fn set_balance(env: &Env, addr: &Address, amount: i128) {
+    let key = DataKey::Balance(addr.clone());
+    env.storage().persistent().set(&key, &amount);
+    env.storage().persistent().extend_ttl(
+        &key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,6 +265,65 @@ mod tests {
                 !env.storage().persistent().has(&DataKey::Balance(empty)),
                 "a zero read must not create or extend an entry"
             );
+        });
+    }
+
+    #[test]
+    fn set_balance_writes_a_readable_value() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+
+        env.as_contract(&id, || {
+            let addr = Address::generate(&env);
+            set_balance(&env, &addr, 7_500);
+            assert_eq!(get_balance(&env, &addr), 7_500);
+        });
+    }
+
+    #[test]
+    fn set_balance_extends_ttl_to_the_full_window() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+
+        env.as_contract(&id, || {
+            let addr = Address::generate(&env);
+            let key = DataKey::Balance(addr.clone());
+
+            set_balance(&env, &addr, 1);
+            assert_eq!(
+                env.storage().persistent().get_ttl(&key),
+                PERSISTENT_BUMP_AMOUNT,
+                "the write itself must extend the entry it creates"
+            );
+        });
+    }
+
+    #[test]
+    fn set_balance_resets_ttl_when_overwriting_a_decayed_entry() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+
+        env.as_contract(&id, || {
+            let addr = Address::generate(&env);
+            let key = DataKey::Balance(addr.clone());
+
+            // Seed an entry through the SDK so it carries only the default TTL,
+            // then let it decay so a reset is observable.
+            env.storage().persistent().set(&key, &10_i128);
+            env.ledger()
+                .set_sequence_number(env.ledger().sequence() + DAY_IN_LEDGERS);
+            let decayed = env.storage().persistent().get_ttl(&key);
+            assert!(decayed < PERSISTENT_BUMP_AMOUNT);
+
+            // Assert the TTL before any read. get_balance extends on a positive
+            // balance too, so reading first would let its extension stand in for
+            // the one under test here.
+            set_balance(&env, &addr, 25);
+            assert_eq!(
+                env.storage().persistent().get_ttl(&key),
+                PERSISTENT_BUMP_AMOUNT
+            );
+            assert_eq!(get_balance(&env, &addr), 25);
         });
     }
 }
