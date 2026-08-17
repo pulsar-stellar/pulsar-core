@@ -83,7 +83,7 @@ Every code commit satisfies one of three conditions: it is a test commit, it is 
 
 No PR merges with code changes and no corresponding test changes. Coverage floor for this repository is 85% line coverage, measured with `cargo-llvm-cov` and enforced in CI.
 
-Every public contract function needs a happy-path test and at least one failure-path test. Every variant of the error enum needs at least one test that triggers it. Every event emission is asserted with exact topic and data shapes through `env.events().all()`, not partial matches.
+Every public contract function needs a happy-path test and at least one failure-path test. Every variant of the error enum needs at least one test that triggers it. Every event is asserted with exact topic and data shapes through `env.events().all()`, not partial matches. That call returns `ContractEvents`, which compares against a `Vec<(Address, Vec<Val>, Val)>`, so assert the whole collection at once rather than indexing into it: doing so pins the event count alongside the shape.
 
 Tests that only assert "did not throw", tests that mock the code under test, and assertions that are trivially true do not count as tests and will be rejected in review.
 
@@ -93,7 +93,7 @@ Tests that only assert "did not throw", tests that mock the code under test, and
 - No floats anywhere. Amounts are `i128`. If proportional math is ever needed, use basis points and integer arithmetic.
 - No integer casts that can truncate. Use `TryFrom` with explicit error mapping.
 - Every state-changing function calls `require_auth` before any caller-dependent read and before any write.
-- Every event emission goes through a helper in `events.rs`. No inline `env.events().publish` in `contract.rs`.
+- Event definitions live in `events.rs` as structs annotated with `#[contractevent]`. Emission happens by constructing the event struct at the call site and calling `.publish(&env)`. Never construct topic tuples or call `env.events().publish` directly; always route through an event struct.
 - Every public item carries a doc comment. Every module carries a `//!` header.
 - `rustfmt` defaults. `clippy::pedantic` at workspace level, warnings fail CI.
 - No stubs, no `TODO` comments, no `unimplemented!()` in shipped commits.

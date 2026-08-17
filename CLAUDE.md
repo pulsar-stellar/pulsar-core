@@ -47,7 +47,7 @@ Short list. Full detail in `docs/requirements.md`.
 - One commit per logical unit, push after every commit, never `git add .`
 - Every code commit paired with a test commit, or the same commit for trivial cases
 - Every state-changing function calls `require_auth` before any caller-dependent read or write
-- Every event emission routed through a helper in `events.rs`
+- Every event emission goes through an event struct declared in `events.rs` and annotated with `#[contractevent]`. Contract code emits by constructing the struct and calling `.publish(&env)`. Inline `env.events().publish` construction bypassing the event struct is not permitted.
 - Secrets never enter the repo
 - Halt and ask on ambiguity, never guess
 
