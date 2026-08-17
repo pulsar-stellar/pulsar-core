@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use pulsar_showcase::{PulsarShowcase, PulsarShowcaseClient};
+use pulsar_showcase::{Error, PulsarShowcase, PulsarShowcaseClient};
 use soroban_sdk::testutils::{Address as _, Events as _};
 use soroban_sdk::{vec, Address, Env, IntoVal, Symbol};
 
@@ -56,5 +56,24 @@ fn deposit_requires_authorization_from_the_depositor() {
     assert!(
         result.is_err(),
         "deposit must not succeed without the depositor's authorization"
+    );
+}
+
+#[test]
+fn deposit_rejects_non_positive_amounts() {
+    let (env, _id, client) = setup();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let from = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Zero and negative are the same failure: neither can be applied.
+    assert_eq!(
+        client.try_deposit(&from, &0),
+        Err(Ok(Error::AmountOutOfRange))
+    );
+    assert_eq!(
+        client.try_deposit(&from, &-1),
+        Err(Ok(Error::AmountOutOfRange))
     );
 }
