@@ -10,8 +10,9 @@ mod error;
 mod events;
 mod storage;
 
-/// The contract type, exported so tests and the generated client can reach it.
-pub use contract::PulsarShowcase;
+/// The contract type and the client `#[contractimpl]` generates for it. Tests
+/// and other crates invoke the contract through the client.
+pub use contract::{PulsarShowcase, PulsarShowcaseClient};
 
 /// Every failure a caller can receive. Exported so callers can match on the
 /// variant rather than on a bare error code.

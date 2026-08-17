@@ -10,7 +10,10 @@ authors.workspace = true
 publish = false
 
 [lib]
-crate-type = ["cdylib"]
+# rlib alongside cdylib so integration tests under tests/ can link the crate.
+# stellar contract build passes --crate-type=cdylib explicitly, so the wasm
+# artifact is unaffected.
+crate-type = ["cdylib", "rlib"]
 doctest = false
 
 # soroban-sdk is pinned to =26.1.0 at the workspace root by ADR-001.

@@ -61,12 +61,11 @@ pub enum DataKey {
     /// Instance storage. Set once by `initialize` and never cleared, so its
     /// presence is what distinguishes an initialized contract from a fresh one.
     ///
-    /// Declared but unread until Phase C step 29, where `initialize` writes it
-    /// through `set_initialized` and reads it through `is_initialized` to tell
-    /// `AlreadyInitialized` apart from `NotInitialized`. Those helpers land with
-    /// their caller rather than ahead of it, per ADR-011. Note that `get_admin`
-    /// does not consult this flag: an absent `Admin` already implies an
-    /// uninitialized contract, since the two are written together.
+    /// Written through `set_initialized` and read through `is_initialized`, which
+    /// is how `initialize` tells a fresh contract from one already set up and
+    /// returns `AlreadyInitialized` rather than silently reassigning the admin.
+    /// `get_admin` does not consult this flag: an absent `Admin` already implies
+    /// an uninitialized contract, since the two are written together.
     Initialized,
     /// Instance storage. The address authorized for admin-only operations.
     Admin,
@@ -159,6 +158,25 @@ pub(crate) fn set_balance(env: &Env, addr: &Address, amount: i128) {
         PERSISTENT_LIFETIME_THRESHOLD,
         PERSISTENT_BUMP_AMOUNT,
     );
+}
+
+/// Marks the contract as initialized.
+///
+/// Written once and never cleared. Paired with `set_admin` in the same call, so
+/// the flag being present and an admin being stored are the same fact.
+pub(crate) fn set_initialized(env: &Env) {
+    env.storage().instance().set(&DataKey::Initialized, &true);
+}
+
+/// Reports whether the contract has been initialized.
+///
+/// Absent means never initialized, which is the state a freshly deployed
+/// contract is in before anyone calls `initialize`.
+pub(crate) fn is_initialized(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&DataKey::Initialized)
+        .unwrap_or(false)
 }
 
 #[cfg(test)]

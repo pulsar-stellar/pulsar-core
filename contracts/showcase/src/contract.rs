@@ -8,7 +8,16 @@
 //! Public functions are added one at a time, each with its tests, so the
 //! interface grows in reviewable units rather than arriving whole.
 
-use soroban_sdk::{contract, contractimpl};
+// Soroban's ABI requires public contract functions to take Env by value, even
+// though the body only ever borrows it. The lint is correct in general and wrong
+// here, so it is disabled at module scope rather than per function.
+#![allow(clippy::needless_pass_by_value)]
+
+use soroban_sdk::{contract, contractimpl, Address, Env};
+
+use crate::error::Error;
+use crate::events::Initialize;
+use crate::storage;
 
 /// The showcase contract.
 ///
@@ -20,4 +29,31 @@ use soroban_sdk::{contract, contractimpl};
 pub struct PulsarShowcase;
 
 #[contractimpl]
-impl PulsarShowcase {}
+impl PulsarShowcase {
+    /// Sets the contract's admin, once.
+    ///
+    /// Returns `AlreadyInitialized` if an admin is already stored, so a second
+    /// call cannot quietly hand authority to a different address.
+    ///
+    /// Requires authorization from the address being installed as admin, which
+    /// prevents naming an address that has not consented to the role.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::AlreadyInitialized` if an admin is already stored.
+    pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
+
+        if storage::is_initialized(&env) {
+            return Err(Error::AlreadyInitialized);
+        }
+
+        storage::extend_instance_ttl(&env);
+        storage::set_initialized(&env);
+        storage::set_admin(&env, &admin);
+
+        Initialize { admin }.publish(&env);
+
+        Ok(())
+    }
+}
