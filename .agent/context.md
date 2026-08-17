@@ -110,10 +110,31 @@ cargo llvm-cov --workspace   # floor is 85 percent line coverage
 
 ## 8. State at the time of writing
 
-Build steps 1 through 13 have landed. Phase A is complete and Phase B has started. Next is step 14, the `contracterror` enum.
+Build steps 1 through 31 have landed. Phases A and B are complete and Phase C is
+under way. Next is step 32, the deposit happy path.
 
-`contracts/showcase` exists and the workspace compiles. Its `src/lib.rs` is a stub carrying only a module doc comment: modules land across steps 14 through 27 and re-exports finalize at step 28, so expect the crate to hold orphan module files that nothing includes until then. See ADR-008.
+Steps 29, 30, and 31 landed as a single commit. The sequence splits them into a
+happy path test, the implementation, and a rejection test, but in Rust a test
+calling a function that does not exist is a compile error rather than a failing
+assertion, so committing a test alone would leave the branch unbuildable. Tests
+are still written first and the RED state verified locally; it just does not get
+its own commit. See ADR-014. Expect the same collapse wherever the sequence pairs
+a test step with the implementation step that follows it.
 
-`Cargo.lock` is committed. It holds `ed25519-dalek` at 2.2.0 because soroban-env-host declares an unbounded `>=2.0.0` requirement and 3.0.0 broke the trait bounds its own code relies on.
+`contracts/showcase` holds the full skeleton: the error enum, storage helpers with
+TTL discipline, six event structs, and the contract type with `initialize`
+implemented. The remaining public functions land one at a time, each with tests.
 
-No contract logic, no deployment, no published crate.
+Two `#![allow(dead_code)]` attributes remain, in `storage.rs` and `events.rs`.
+They come out incrementally as public functions acquire callers for the helpers
+and events each module holds, not all at once.
+
+`Cargo.lock` is committed. It holds `ed25519-dalek` at 2.2.0 because
+soroban-env-host declares an unbounded `>=2.0.0` requirement and 3.0.0 broke the
+trait bounds its own code relies on.
+
+The crate builds for `wasm32v1-none` at 6260 bytes. That number is a reachability
+signal: helpers and events that nothing calls are stripped from the artifact, so
+a commit adding a caller should grow it.
+
+No deployment, no published crate.
