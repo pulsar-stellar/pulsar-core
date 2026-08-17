@@ -77,3 +77,16 @@ fn deposit_rejects_non_positive_amounts() {
         Err(Ok(Error::AmountOutOfRange))
     );
 }
+
+#[test]
+fn deposit_fails_on_an_uninitialized_contract() {
+    let (env, _id, client) = setup();
+    env.mock_all_auths();
+    let from = Address::generate(&env);
+
+    // No initialize call, so the contract has no admin and no Initialized flag.
+    assert_eq!(
+        client.try_deposit(&from, &100),
+        Err(Ok(Error::NotInitialized))
+    );
+}
