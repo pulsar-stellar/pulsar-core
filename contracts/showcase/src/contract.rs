@@ -217,4 +217,14 @@ impl PulsarShowcase {
 
         Ok(())
     }
+
+    /// Reports an address's balance.
+    ///
+    /// A read view. It requires no authorization, since balances are public
+    /// ledger state, and it does not extend the entry's TTL: observing an entry
+    /// is not a reason to keep it alive.
+    #[must_use]
+    pub fn balance(env: Env, of: Address) -> i128 {
+        storage::read_balance(&env, &of)
+    }
 }

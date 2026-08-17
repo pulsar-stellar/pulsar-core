@@ -114,7 +114,10 @@ pub(crate) fn set_admin(env: &Env, admin: &Address) {
     env.storage().instance().set(&DataKey::Admin, admin);
 }
 
-/// Read an address's balance.
+/// Read an address's balance ahead of writing it.
+///
+/// For state-changing callers, where the read precedes a write to the same entry.
+/// Read-only callers use `read_balance`, which leaves the TTL untouched.
 ///
 /// An absent entry means zero. The contract never writes an explicit zero, so
 /// "no entry" and "zero balance" are the same state and `unwrap_or(0)` is the
@@ -177,6 +180,21 @@ pub(crate) fn is_initialized(env: &Env) -> bool {
         .instance()
         .get(&DataKey::Initialized)
         .unwrap_or(false)
+}
+
+/// Read an address's balance without touching its TTL.
+///
+/// For read-only callers: public views and any observation that should not
+/// change how long the entry survives. Read views deliberately do not extend
+/// TTL, so a contract read alone never keeps an entry alive.
+///
+/// `get_balance` is the counterpart for state-changing callers, where the read
+/// precedes a write and the extension belongs with that write.
+pub(crate) fn read_balance(env: &Env, addr: &Address) -> i128 {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Balance(addr.clone()))
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -367,6 +385,51 @@ mod tests {
                 !env.storage().instance().has(&DataKey::Balance(addr)),
                 "balances belong in persistent storage, not instance"
             );
+        });
+    }
+
+    #[test]
+    fn read_balance_returns_zero_for_an_absent_key() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+
+        env.as_contract(&id, || {
+            let addr = Address::generate(&env);
+            assert_eq!(read_balance(&env, &addr), 0);
+        });
+    }
+
+    #[test]
+    fn read_balance_returns_the_stored_value() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+
+        env.as_contract(&id, || {
+            let addr = Address::generate(&env);
+            set_balance(&env, &addr, 640);
+            assert_eq!(read_balance(&env, &addr), 640);
+        });
+    }
+
+    #[test]
+    fn read_balance_does_not_extend_ttl() {
+        let env = Env::default();
+        let id = env.register(Harness, ());
+
+        env.as_contract(&id, || {
+            let holder = Address::generate(&env);
+            let key = DataKey::Balance(holder.clone());
+
+            set_balance(&env, &holder, 1);
+            env.ledger()
+                .set_sequence_number(env.ledger().sequence() + DAY_IN_LEDGERS);
+            let before = env.storage().persistent().get_ttl(&key);
+
+            assert_eq!(read_balance(&env, &holder), 1);
+
+            // A read view must leave the entry's lifetime exactly where it found
+            // it. get_balance would have bumped this back to the full window.
+            assert_eq!(env.storage().persistent().get_ttl(&key), before);
         });
     }
 }
