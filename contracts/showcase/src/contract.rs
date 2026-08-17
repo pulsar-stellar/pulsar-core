@@ -16,7 +16,7 @@
 use soroban_sdk::{contract, contractimpl, Address, Env};
 
 use crate::error::Error;
-use crate::events::{Deposit, Initialize};
+use crate::events::{Deposit, Initialize, Withdraw};
 use crate::storage;
 
 /// The showcase contract.
@@ -85,6 +85,39 @@ impl PulsarShowcase {
         storage::set_balance(&env, &from, updated);
 
         Deposit { from, amount }.publish(&env);
+
+        Ok(())
+    }
+
+    /// Debits an address's balance by `amount`.
+    ///
+    /// Requires authorization from the address being debited, so no one can move
+    /// value out of an account they do not control.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::NotInitialized` if the contract has no admin yet,
+    /// `Error::AmountOutOfRange` if `amount` is not positive, and
+    /// `Error::InsufficientBalance` if the stored balance is below `amount`.
+    pub fn withdraw(env: Env, to: Address, amount: i128) -> Result<(), Error> {
+        to.require_auth();
+
+        if !storage::is_initialized(&env) {
+            return Err(Error::NotInitialized);
+        }
+        if amount <= 0 {
+            return Err(Error::AmountOutOfRange);
+        }
+
+        storage::extend_instance_ttl(&env);
+
+        let balance = storage::get_balance(&env, &to);
+        if amount > balance {
+            return Err(Error::InsufficientBalance);
+        }
+        storage::set_balance(&env, &to, balance - amount);
+
+        Withdraw { to, amount }.publish(&env);
 
         Ok(())
     }

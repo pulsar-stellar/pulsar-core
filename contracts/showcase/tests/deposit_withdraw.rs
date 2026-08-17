@@ -90,3 +90,60 @@ fn deposit_fails_on_an_uninitialized_contract() {
         Err(Ok(Error::NotInitialized))
     );
 }
+
+#[test]
+fn withdraw_emits_the_withdraw_event_with_holder_and_amount() {
+    let (env, id, client) = setup();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let holder = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.deposit(&holder, &500);
+    client.withdraw(&holder, &200);
+
+    assert_eq!(
+        env.events().all(),
+        vec![
+            &env,
+            (
+                id.clone(),
+                (Symbol::new(&env, "withdraw"), holder.clone()).into_val(&env),
+                200_i128.into_val(&env),
+            ),
+        ]
+    );
+}
+
+#[test]
+fn withdraw_permits_spending_the_entire_balance() {
+    let (env, _id, client) = setup();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let holder = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.deposit(&holder, &500);
+    client.withdraw(&holder, &200);
+
+    // Exactly the remainder must succeed. This is the boundary that separates
+    // a correct `amount > balance` check from an off-by-one `>=`, and it is also
+    // how the debit arithmetic is observable before a balance view exists.
+    client.withdraw(&holder, &300);
+}
+
+#[test]
+fn withdraw_requires_authorization_from_the_holder() {
+    let (env, _id, client) = setup();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let holder = Address::generate(&env);
+    client.initialize(&admin);
+    client.deposit(&holder, &500);
+
+    env.set_auths(&[]);
+    assert!(
+        client.try_withdraw(&holder, &100).is_err(),
+        "withdraw must not succeed without the holder's authorization"
+    );
+}
