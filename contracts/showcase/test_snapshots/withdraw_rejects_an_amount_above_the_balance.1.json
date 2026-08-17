@@ -60,7 +60,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "i128": "200"
+                  "i128": "501"
                 }
               ]
             }
@@ -99,7 +99,7 @@
               },
               "durability": "persistent",
               "val": {
-                "i128": "300"
+                "i128": "-1"
               }
             }
           },
@@ -248,7 +248,7 @@
               }
             ],
             "data": {
-              "i128": "200"
+              "i128": "501"
             }
           }
         }

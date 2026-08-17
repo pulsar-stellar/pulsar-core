@@ -147,3 +147,28 @@ fn withdraw_requires_authorization_from_the_holder() {
         "withdraw must not succeed without the holder's authorization"
     );
 }
+
+#[test]
+fn withdraw_rejects_an_amount_above_the_balance() {
+    let (env, _id, client) = setup();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let holder = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.deposit(&holder, &500);
+
+    // One over the balance is the tightest case that must still be refused.
+    assert_eq!(
+        client.try_withdraw(&holder, &501),
+        Err(Ok(Error::InsufficientBalance))
+    );
+
+    // An address that never deposited has no entry at all, which reads as zero
+    // rather than as a missing-key failure.
+    let stranger = Address::generate(&env);
+    assert_eq!(
+        client.try_withdraw(&stranger, &1),
+        Err(Ok(Error::InsufficientBalance))
+    );
+}
