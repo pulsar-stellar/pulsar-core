@@ -1,0 +1,23 @@
+[package]
+name = "pulsar-decoder"
+description = "Typed decoder for Soroban contract events emitted by the Pulsar toolkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+# Not published while the crate is a placeholder. Publishing begins when the
+# decoder has real content, at v0.2.0-contracts.
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+# No dependencies yet. The decoder's public API is deliberately designed after
+# the app repo demonstrates what shape consumers need, so adding soroban-sdk or
+# an XDR crate now would be guessing at that shape.
+[dependencies]
+
+[lints]
+workspace = true
