@@ -4,7 +4,7 @@
 
 This project's initial scaffolding and much of its ongoing implementation is written with Claude Code assistance under human review. Every commit is authored, reviewed, and merged by a human maintainer. Design decisions, architecture choices, and merge judgments are human. If you contribute a PR, we don't require you to disclose whether AI tools helped you write it; we do require that your code passes review, tests, and the discipline rules in the requirements document.
 
-The discipline rules referred to above are restated in full in this file, under Commit rules, Test discipline, and Code rules. Those sections are the standard a PR is measured against. Read them before your first PR.
+The discipline rules referred to above are stated in this file, under Commit rules, Test discipline, and Code rules. Those sections are the standard a PR is measured against, and they are what you need before your first PR. Testing methodology, meaning how to verify a test covers what it claims, lives in `.agent/testing.md`, and the reasoning behind any rule that looks arbitrary is in the decision log at `.agent/decisions.md`.
 
 ## Setup
 
@@ -51,6 +51,28 @@ It is also load-bearing right now. soroban-env-host declares `ed25519-dalek = ">
 
 Do not commit an incidental lock file update. If your change genuinely requires new or updated dependencies, land the lock change in its own commit whose message says which dependency moved and why, for example `build(deps): bump soroban-sdk to 26.2.0 for event topic fix`. A lock diff that appears alongside unrelated work will be sent back. Run `cargo build --locked` if you want to confirm your branch does not move it.
 
+### Test snapshots
+
+`contracts/showcase/test_snapshots/` is committed. The SDK writes one JSON
+snapshot per test, capturing ledger state, the authorizations required, and the
+calls made, and the output is deterministic across runs.
+
+Snapshot diffs are reviewed like code. A change to an auth entry, a stored value,
+or a call sequence appears there even when every assertion still passes, which is
+the class of change that otherwise goes unnoticed. If your PR moves a snapshot,
+be ready to explain why.
+
+## Working from issues
+
+Substantive work is tracked with a GitHub issue opened before the work starts. The
+issue carries the scope, the acceptance criteria, and references to any ADR or
+specification section that governs it. The PR closes it with `Closes #NN` in the
+body.
+
+This applies to maintainer work as much as to outside contributions. An issue
+written after the fact documents what was done; one written before it is a chance
+to disagree about scope while disagreeing is still cheap.
+
 ## Commit rules
 
 These are enforced, not stylistic preferences.
@@ -79,17 +101,37 @@ chore(agent): seed decisions.md with soroban-sdk version rationale
 
 ## Test discipline
 
-Every code commit satisfies one of three conditions: it is a test commit, it is implementation preceded by a commit containing the failing test it makes pass, or it is scaffolding with no logic.
+Contributors must:
 
-No PR merges with code changes and no corresponding test changes. Coverage floor for this repository is 85% line coverage, measured with `cargo-llvm-cov` and enforced in CI.
+- Include tests for behavior-carrying code, meaning any helper or public function
+  that encodes a decision the SDK does not already make
+- Land tests and implementation in one commit for behavior-carrying additions.
+  A test calling a function that does not exist yet is a compile error in Rust,
+  not a failing assertion, so a test-only commit ahead of its implementation
+  leaves the branch unbuildable
+- Give every public contract function a happy-path test and at least one
+  failure-path test, and every error variant a test that triggers it
+- Assert events with exact topic and data shapes, never partial matches
+- Name tests for the single claim they make. A name that needs "and" usually
+  means the test is hiding a coverage gap
+- Not submit test theater: tests asserting only "did not throw", tests mocking
+  the code under test, and trivially true assertions are rejected in review
+- Not disable a clippy warning without ADR-level justification
+- Keep line coverage above 85 percent, and run
+  `cargo llvm-cov --workspace --locked --summary-only` before submitting
 
-Every public contract function needs a happy-path test and at least one failure-path test. Every variant of the error enum needs at least one test that triggers it. Every event is asserted with exact topic and data shapes through `env.events().all()`, not partial matches. That call returns `ContractEvents`, which compares against a `Vec<(Address, Vec<Val>, Val)>`, so assert the whole collection at once rather than indexing into it: doing so pins the event count alongside the shape.
+Some code is structural rather than behavior-carrying: types, module scaffolding,
+and pass-through wrappers around a single SDK call with no decision in them.
+Structural work lands without paired tests and is covered through the public
+functions that call it. Do not expect every commit to add tests; whether pairing
+is required follows from which kind of work it is.
 
-Tests that only assert "did not throw", tests that mock the code under test, and assertions that are trivially true do not count as tests and will be rejected in review.
+For the methodology behind these rules, including how to verify a test actually
+covers what it claims, see `.agent/testing.md`. The reasoning is in ADR-014.
 
 ## Code rules
 
-- No `unwrap`, `expect`, `ok().unwrap()`, or `panic!` in contract code. Convert `Option` to `Result` with `.ok_or(Error::Variant)`. Tests may use `unwrap` and `expect`.
+- No `unwrap`, `expect`, `ok().unwrap()`, or `panic!` in contract code. Convert `Option` to `Result` with `.ok_or(Error::Variant)`. Test files may use `.expect("descriptive message")` with a non-empty message, since the panic text is the diagnostic when a test fails. A naked `unwrap` or an empty-string expect is not permitted anywhere. Production code, meaning everything under `src/` outside a `#[cfg(test)]` block, stays fully bound by the no-panic rule. See ADR-015.
 - No floats anywhere. Amounts are `i128`. If proportional math is ever needed, use basis points and integer arithmetic.
 - No integer casts that can truncate. Use `TryFrom` with explicit error mapping.
 - Every state-changing function calls `require_auth` before any caller-dependent read and before any write.
