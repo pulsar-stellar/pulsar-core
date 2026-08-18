@@ -146,3 +146,26 @@ fn transfer_requires_authorization_from_the_sender() {
         "transfer must not succeed without the sender's authorization"
     );
 }
+
+#[test]
+fn transfer_rejects_non_positive_amounts() {
+    let (env, _id, client) = setup();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let from = Address::generate(&env);
+    let to = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.deposit(&from, &500);
+
+    // The sender is funded so the rejection comes from the amount guard rather
+    // than from an insufficient balance, matching the deposit and withdraw cases.
+    assert_eq!(
+        client.try_transfer(&from, &to, &0),
+        Err(Ok(Error::AmountOutOfRange))
+    );
+    assert_eq!(
+        client.try_transfer(&from, &to, &-1),
+        Err(Ok(Error::AmountOutOfRange))
+    );
+}
