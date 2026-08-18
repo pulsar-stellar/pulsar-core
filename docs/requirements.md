@@ -1,4 +1,4 @@
-# Pulsar Stellar — Project Requirements Document
+# Pulsar Stellar: Project Requirements Document
 
 **Purpose**: single authoritative reference for external tools, test discipline, context folders, dependency management, and authenticity principles across both `pulsar-core` and `pulsar-app`.
 
@@ -120,8 +120,12 @@ Required on the developer machine before any sprint starts:
 | Docker Compose | v2+ | Bundled with modern Docker | Local dev stack |
 | Git | 2.40+ | Platform-specific | Version control |
 | `gh` CLI | Latest | Platform-specific | Issue creation script |
+| cargo-llvm-cov | 0.9+ | `cd ~ && rustup run stable cargo install --locked cargo-llvm-cov` | Coverage measurement |
+| `llvm-tools` component | matches project toolchain | `rustup component add llvm-tools --toolchain 1.92.0` | Required by cargo-llvm-cov |
 
 Two Rust rows, not one. stellar-cli 27.1.0 requires rustc 1.93.0 or newer to build, while the contract is pinned to 1.92.0, the lowest version that both clears soroban-sdk 26.1.0's declared MSRV of 1.91.0 and avoids stellar-cli's refusal to build contracts on 1.91.0 exactly. The `wasm32v1-none` target the contract needs arrived in 1.84 and is present in every later release, so the target does not constrain the pin upward or downward. Running `cargo install --locked stellar-cli` from inside the project directory picks up the pinned 1.92 toolchain and fails. The `cd ~` moves out of the `rust-toolchain.toml` override and `rustup run stable` selects the host channel explicitly. See ADR-007 in `pulsar-core/.agent/decisions.md`.
+
+Coverage tooling needs both rows. `cargo-llvm-cov` is a host binary tool and installs on the stable channel for the reason ADR-007 gives for stellar-cli. The `llvm-tools` component is not present by default because `rust-toolchain.toml` sets `profile = "minimal"`, which omits it, so a fresh clone cannot measure coverage until it is added. The 85 percent line coverage floor is a release gate, so both belong in a working setup rather than in a contributor's later surprise.
 
 Verification script at `pulsar-app/scripts/verify-toolchain.sh` runs `<tool> --version` for each and asserts minimum version. Runs at scaffold time and before every major sprint.
 
@@ -182,7 +186,7 @@ Coverage measured on `main` merges and reported as a PR comment. Coverage badges
 **Rust contracts (`pulsar-showcase`, future showcase contracts)**:
 - Unit tests: every public function has happy-path AND at least one failure-path test
 - Integration tests: full contract deployment + invocation using `soroban-sdk::testutils::Env`
-- Event assertion: every event emission asserted with exact topic and data shapes using `env.events().all()`
+- Event assertion: every event emission asserted with exact topic and data shapes using `env.events().all()`. That call returns the events of the most recent invocation, not the cumulative history, so assert immediately after the call that emits. See `.agent/testing.md`.
 - Auth assertion: every state-changing function has a test that fails when `require_auth` is not mocked
 
 **Rust decoder (`pulsar-decoder`)**:
@@ -490,6 +494,198 @@ Any deliverable that violates these is not accepted. The stricter rule always wi
 - **YYYY-MM-DD**: Initial requirements document drafted, before any code
 
 Update whenever a rule is added, tightened, or removed.
+
+---
+
+---
+
+## 8. Contract specification (`pulsar-showcase`)
+
+Authoritative for the contract's public surface and its emitted event shapes. The
+contract source remains the final word on behavior; where this section and
+`contracts/showcase/src/contract.rs` disagree, the source is right and this
+section needs an update.
+
+### 8.1 What the contract is for
+
+`pulsar-showcase` is a reference contract, not a product. Every function exists to
+exercise a specific decoder capability rather than to model a use case, which is
+what keeps the surface at six state-changing functions and two read views.
+
+The event shapes below are the toolkit's public contract. The `pulsar-decoder`
+crate, the Go indexer, the TypeScript SDK, and the web explorer all decode against
+them, and the committed fixtures are calibrated to them. A change to a topic
+tuple, a topic's position, or a data payload's encoding is a breaking change for
+every downstream consumer even when the contract's own behavior is unaffected.
+Treat this section as an interface definition, not as documentation of an
+implementation detail.
+
+### 8.2 Storage model
+
+| Key | Class | Contents |
+|---|---|---|
+| `Initialized` | instance | flag set once by `initialize`, never cleared |
+| `Admin` | instance | the address authorized for admin-only operations |
+| `Balance(Address)` | persistent | one entry per address that has held a balance |
+
+Instance storage holds small, bounded state read on nearly every call and shares
+one TTL with the contract instance. Persistent storage holds per-address state of
+unbounded cardinality, each entry carrying its own TTL. Temporary storage is not
+used and must not be added: nothing this contract stores is disposable. See
+ADR-004.
+
+TTL durations are multiples of `DAY_IN_LEDGERS` (17,280, from Stellar's roughly
+five second ledger close). The instance bump is seven days, following the
+convention in `stellar/soroban-examples/token`; persistent entries bump to thirty
+days. Each threshold sits one day under its bump. See ADR-012.
+
+Responsibility for extending TTL follows the storage class. The instance
+extension happens once at a public function's entry point, so instance-write
+helpers perform only the write. A persistent entry's extension belongs beside the
+write that creates or refreshes it, because the extension is meaningful only in
+relation to a specific key. See ADR-013.
+
+Read views do not extend TTL, so observing state never keeps it alive. This is why
+two balance readers exist: `get_balance` extends on a positive read and is for
+state-changing callers whose read precedes a write, while `read_balance` leaves
+the entry's lifetime untouched and serves the public view. See ADR-019.
+
+### 8.3 Public functions
+
+All six state-changing functions extend the instance TTL after their
+preconditions pass and before their writes. Authorization is always checked
+first, before any caller-dependent read or write.
+
+**`initialize(env: Env, admin: Address) -> Result<(), Error>`**
+
+- Auth: `admin.require_auth()`, the address being installed. Naming an address as
+  admin without its consent would let anyone assign authority to a third party.
+- Preconditions: not already initialized, else `AlreadyInitialized`.
+- Effect: sets `Initialized` and `Admin` in instance storage.
+- Event: `Initialize { admin }`.
+
+**`deposit(env: Env, from: Address, amount: i128) -> Result<(), Error>`**
+
+- Auth: `from.require_auth()`.
+- Preconditions: initialized, else `NotInitialized`. `amount > 0`, else
+  `AmountOutOfRange`.
+- Effect: `Balance(from) += amount`, via `checked_add`. An overflow returns
+  `AmountOutOfRange`.
+- Event: `Deposit { from, amount }`.
+
+**`withdraw(env: Env, to: Address, amount: i128) -> Result<(), Error>`**
+
+- Auth: `to.require_auth()`.
+- Preconditions: initialized, else `NotInitialized`. `amount > 0`, else
+  `AmountOutOfRange`. `amount <= Balance(to)`, else `InsufficientBalance`.
+- Effect: `Balance(to) -= amount`.
+- Event: `Withdraw { to, amount }`.
+
+**`transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), Error>`**
+
+- Auth: `from.require_auth()`. The recipient does not authorize; receiving value
+  is not a burden requiring consent, which is also what SEP-41 specifies.
+- Preconditions: initialized, else `NotInitialized`. `amount > 0`, else
+  `AmountOutOfRange`. `amount <= Balance(from)`, else `InsufficientBalance`.
+  Crediting the recipient uses `checked_add` and returns `AmountOutOfRange` on
+  overflow.
+- Effect: debits the sender, then credits the recipient. Each balance is read
+  immediately before its own write, never both up front: reading both first
+  aliases when `from == to` and inflates the balance. See ADR-017.
+- Self-transfer is permitted and leaves the balance unchanged.
+- Event: `Transfer { from, to, amount }`.
+
+**`set_admin(env: Env, new_admin: Address) -> Result<(), Error>`**
+
+- Auth: the admin read from storage, not the argument. Trusting the argument would
+  let any caller name themselves and seize the contract.
+- Preconditions: initialized, else `NotInitialized`, inherited from the storage
+  read.
+- Effect: replaces `Admin`.
+- Event: `AdminChange { new_admin, old_admin }`.
+
+**`emit_custom(env: Env, tag: Symbol, payload: Bytes) -> Result<(), Error>`**
+
+- Auth: the admin read from storage.
+- Preconditions: initialized, else `NotInitialized`, inherited from the storage
+  read.
+- Effect: none. The function exists only to emit.
+- Event: `EmitCustom { tag, payload }`.
+
+Authorization is required despite the absence of state change. An open
+event-only endpoint would let anyone write arbitrary entries into the event
+history of the contract the whole toolkit tests against, which poisons fixtures
+rather than funds.
+
+**`balance(env: Env, of: Address) -> i128`**
+
+- Read view. No authorization, no TTL extension, and no error path: an address
+  with no entry reads as zero, since the contract never writes an explicit zero.
+
+**`admin(env: Env) -> Result<Address, Error>`**
+
+- Read view. No authorization and no TTL extension. Returns `NotInitialized` when
+  no admin is stored.
+
+### 8.4 Event catalog
+
+Events are declared as structs in `events.rs` annotated with
+`#[contractevent(topics = ["<symbol>"], data_format = "single-value")]`. Contract
+code emits by constructing the struct and calling `.publish(&env)`. Building a
+topic tuple by hand or calling `env.events().publish` directly is not permitted.
+
+| Event | Wire symbol | Topics after the symbol | Data |
+|---|---|---|---|
+| `Initialize` | `initialize` | none | `Address`, the admin |
+| `Deposit` | `deposit` | `from` | `i128` |
+| `Withdraw` | `withdraw` | `to` | `i128` |
+| `Transfer` | `transfer` | `from`, `to` | `i128` |
+| `AdminChange` | `admin_change` | `new_admin` | `Address`, the outgoing admin |
+| `EmitCustom` | `custom` | `tag`, chosen at run time | `Bytes` |
+
+Both annotations are deliberate. `topics` names the leading wire Symbol
+explicitly rather than deriving it from the Rust type name, so renaming a struct
+cannot silently retarget the event. `data_format = "single-value"` encodes the
+payload as a bare value rather than the macro's default map keyed by field name,
+and it also constrains the struct to at most one non-topic field, which makes
+moving a field between topics and data a compile error rather than a silent wire
+change. See ADR-016.
+
+Two shapes carry commitments beyond this contract. `Transfer`'s three topics in
+`from`, `to` order are the SEP-41 conformance shape that wallets and indexers
+already match on. `EmitCustom`'s second topic is a function argument rather than a
+compile-time constant, which is the case a decoder tested only against statically
+known topics will fail on.
+
+`AdminChange` is deliberately asymmetric: the incoming admin is a topic so
+"who holds authority now" is filterable without decoding payloads, while
+reconstructing the chain of past holders requires reading each event's data.
+
+### 8.5 Error enum
+
+```rust
+pub enum Error {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    InsufficientBalance = 3,
+    AmountOutOfRange = 4,
+}
+```
+
+Discriminants are wire-visible: a caller that traps sees the number, not the
+name. From the first deployment they are frozen, and a removed variant retires
+its number rather than freeing it for reuse.
+
+`AmountOutOfRange` covers both an amount that is invalid in itself, meaning zero
+or negative, and an amount whose application would overflow the stored balance.
+Both are the same failure from a caller's view: the amount cannot be applied as
+given.
+
+There is no variant for failed authorization. `require_auth` is enforced by the
+host, which raises the failure before the function completes, so no code path can
+construct one and a caller receives a host invocation error rather than a contract
+error value. Tests assert `is_err()` for this reason rather than matching a
+variant. See ADR-018.
 
 ---
 
