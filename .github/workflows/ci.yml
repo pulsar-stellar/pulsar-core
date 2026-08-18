@@ -70,6 +70,13 @@ jobs:
         if: steps.members.outputs.present == 'true'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # Production contract code must return typed errors rather than panic.
+      # The script scopes itself to src/ above each file's first #[cfg(test)],
+      # so test code keeps the ADR-015 expect exception.
+      - name: Verify no panicking APIs in production code
+        if: steps.members.outputs.present == 'true'
+        run: ./scripts/verify-no-panic-apis.sh
+
       - name: Test
         if: steps.members.outputs.present == 'true'
         run: cargo test --workspace

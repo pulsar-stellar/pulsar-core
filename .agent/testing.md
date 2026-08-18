@@ -73,9 +73,14 @@ failed. A bare `.expect("")` or an `unwrap` standing in for an assertion is not
 acceptable.
 
 Production code, meaning everything under `src/` outside a `#[cfg(test)]` block,
-remains bound by the no-panic rule. See ADR-015. The mechanical check enforcing
-it is scoped the same way: it scans each file under `src/` up to the first
-`#[cfg(test)]` marker and does not look at `tests/` at all.
+remains bound by the no-panic rule. See ADR-015.
+
+`scripts/verify-no-panic-apis.sh` enforces this and runs as a required CI step.
+It is scoped the same way the rule is: it reads each file under `src/` up to the
+first `#[cfg(test)]` marker, treats a file without one as production code
+throughout, and does not look at `tests/` at all. It strips comments and string
+literals before matching, so prose in a doc comment and the message inside
+`.expect("...")` do not register as calls. Run it locally with no arguments.
 
 ## One behavior per test
 

@@ -426,6 +426,13 @@ Reinforcing the playbook's operating principles. These rules apply to every arti
 - No `unimplemented!()` (Rust)
 - No `panic("not implemented")` (Go)
 - No `throw new Error("TODO")` (TS)
+
+In `pulsar-core` the Rust items are enforced mechanically by
+`scripts/verify-no-panic-apis.sh`, a required CI step. It also covers `.unwrap()`,
+`.expect(`, `panic!`, and `todo!`, which CONTRIBUTING forbids in contract code for
+the same reason: a panic is an untyped failure a caller cannot handle. The check
+reads each file under `src/` up to its first `#[cfg(test)]` marker, so test code
+keeps the descriptive-message exception in ADR-015.
 - Every function commit is complete and testable at the moment it lands
 
 ### 5.2 No fabricated numbers
