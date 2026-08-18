@@ -21,7 +21,7 @@ tested.
 | `pulsar-showcase` contract | complete, 8 public functions, 6 event types |
 | Test suite | 54 tests, 98.7 percent line coverage |
 | `pulsar-decoder` crate | placeholder, real content at v0.2.0-contracts |
-| Testnet deployment | see Deployment below |
+| Testnet deployment | live, see Deployment below |
 | Published crate | not published |
 
 The first release is `v0.1.0-contracts`, which ships the showcase contract
@@ -77,6 +77,8 @@ stellar contract invoke \
   --source deployer \
   --network testnet \
   -- initialize --admin <ADMIN_ADDRESS>
+
+Calling it twice returns `Error(Contract, #1)`, which is `AlreadyInitialized`.
 ```
 
 The admin address authorizes `set_admin` and `emit_custom`. Rotation requires the
@@ -94,7 +96,32 @@ Returns the admin address. The contract's event history is browsable at
 
 ## Deployment
 
-Contract ID is recorded here once the first testnet deployment lands.
+Live on Stellar testnet and initialized.
+
+| | |
+|---|---|
+| Contract ID | `CDNWTVUDKCCGW7GOC6SBLUFXXUCD2YDHWRDUSXZ6CYBQKQWLCUYYWI5L` |
+| Admin | `GCQURZFYPPAN76FRARROTSTYVH2LQ5AP7OLDXMJPIQ7STDOM55FXWD4T` |
+| Wasm hash | `e8fd07e940e92d9c6a56b22573337f1cacee956a3b507990db4efa2522306dcf` |
+| Network | testnet |
+
+Browse its event history at
+[stellar.expert](https://stellar.expert/explorer/testnet/contract/CDNWTVUDKCCGW7GOC6SBLUFXXUCD2YDHWRDUSXZ6CYBQKQWLCUYYWI5L).
+
+Read it without installing anything:
+
+```sh
+stellar contract invoke --id CDNWTVUDKCCGW7GOC6SBLUFXXUCD2YDHWRDUSXZ6CYBQKQWLCUYYWI5L \
+  --source <YOUR_IDENTITY> --network testnet -- admin
+```
+
+The admin is the deploying identity. For a reference contract whose purpose is
+emitting event shapes rather than holding value, separating the two would add a
+key to manage without adding a guarantee.
+
+Testnet is reset periodically, so this contract will eventually be archived and
+the ID will stop resolving. When that happens, redeploy with `scripts/build.sh`
+and `scripts/deploy-testnet.sh` and update this section.
 
 ## Toolchain
 
