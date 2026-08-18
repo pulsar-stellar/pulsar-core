@@ -17,13 +17,18 @@ set -euo pipefail
 
 BANNED_DESC=(
     '.unwrap()'
+    '.unwrap_err()'
     '.expect('
     'panic!'
     'todo!'
     'unimplemented!'
 )
 # Matched against code with comments and string literals already stripped.
-BANNED_RE='\.unwrap\(\)|\.expect\(|\bpanic!|\btodo!|\bunimplemented!'
+#
+# `\.unwrap\(` deliberately stops at the open paren rather than requiring `()`,
+# so any form is caught. It does not match `.unwrap_or(`, `.unwrap_or_default(`,
+# or `.unwrap_or_else(`, which are total and carry no panic.
+BANNED_RE='\.unwrap\(|\.unwrap_err\(|\.expect\(|\bpanic!|\btodo!|\bunimplemented!'
 
 if [ "$#" -gt 0 ]; then
     search_dirs=("$@")

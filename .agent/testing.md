@@ -67,10 +67,11 @@ nothing exercised it.
 
 ## expect in test code
 
-Test code may use `.expect("message")` with a non-empty descriptive message. The
-panic text is the diagnostic, and a test is read most often at the moment it has
-failed. A bare `.expect("")` or an `unwrap` standing in for an assertion is not
-acceptable.
+Test code may use `.expect("message")` and `.expect_err("message")` with a
+non-empty descriptive message. The panic text is the diagnostic, and a test is
+read most often at the moment it has failed. A bare `.expect("")`, an `unwrap`, or
+an `unwrap_err` standing in for an assertion is not acceptable: each reports only
+a line number.
 
 Production code, meaning everything under `src/` outside a `#[cfg(test)]` block,
 remains bound by the no-panic rule. See ADR-015.

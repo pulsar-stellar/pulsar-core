@@ -133,7 +133,7 @@ reasoning for the paired-commit pattern specifically is in ADR-014.
 
 ## Code rules
 
-- No `unwrap`, `expect`, `ok().unwrap()`, or `panic!` in contract code. Convert `Option` to `Result` with `.ok_or(Error::Variant)`. Test files may use `.expect("descriptive message")` with a non-empty message, since the panic text is the diagnostic when a test fails. A naked `unwrap` or an empty-string expect is not permitted anywhere. Production code, meaning everything under `src/` outside a `#[cfg(test)]` block, stays fully bound by the no-panic rule. See ADR-015.
+- No `unwrap`, `unwrap_err`, `expect`, or `panic!` in contract code. Convert `Option` to `Result` with `.ok_or(Error::Variant)` and propagate with `?`. The total combinators `unwrap_or`, `unwrap_or_default`, and `unwrap_or_else` are fine, since none of them panic. Test files may use `.expect("descriptive message")` and `.expect_err("descriptive message")` with a non-empty message, since the panic text is the diagnostic when a test fails. A naked `unwrap` or an empty-string expect is not permitted anywhere. Production code, meaning everything under `src/` outside a `#[cfg(test)]` block, stays fully bound by the rule, and `scripts/verify-no-panic-apis.sh` enforces it in CI. See ADR-015.
 - No floats anywhere. Amounts are `i128`. If proportional math is ever needed, use basis points and integer arithmetic.
 - No integer casts that can truncate. Use `TryFrom` with explicit error mapping.
 - Every state-changing function calls `require_auth` before any caller-dependent read and before any write.

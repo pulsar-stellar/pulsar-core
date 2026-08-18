@@ -429,10 +429,13 @@ Reinforcing the playbook's operating principles. These rules apply to every arti
 
 In `pulsar-core` the Rust items are enforced mechanically by
 `scripts/verify-no-panic-apis.sh`, a required CI step. It also covers `.unwrap()`,
-`.expect(`, `panic!`, and `todo!`, which CONTRIBUTING forbids in contract code for
-the same reason: a panic is an untyped failure a caller cannot handle. The check
-reads each file under `src/` up to its first `#[cfg(test)]` marker, so test code
-keeps the descriptive-message exception in ADR-015.
+`.unwrap_err()`, `.expect(`, `panic!`, and `todo!`, which CONTRIBUTING forbids in
+contract code for the same reason: a panic is an untyped failure a caller cannot
+handle. The total combinators `unwrap_or`, `unwrap_or_default`, and
+`unwrap_or_else` are permitted, since none of them panic. The check reads each
+file under `src/` up to its first `#[cfg(test)]` marker, so test code keeps the
+descriptive-message exception in ADR-015, where an expected error is asserted with
+`.expect_err("message")` rather than `.unwrap_err()`.
 - Every function commit is complete and testable at the moment it lands
 
 ### 5.2 No fabricated numbers
