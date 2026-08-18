@@ -366,9 +366,443 @@ The two-toolchain model holds unchanged: the project toolchain is pinned in `rus
 
 ---
 
-*ADR-010 through ADR-017 are reserved for entries drafted during Phase B and Phase
-C that have not yet been written up. The numbers are held so that references to
-them in commit messages and source comments stay valid when they land.*
+## ADR-010: Install stellar-cli in CI from a pinned release binary
+Date: 2026-08-18
+Status: accepted
+
+### Context
+
+ADR-007 established that stellar-cli is a host tool, installed on the host stable
+channel rather than the pinned project toolchain, and named `cargo install` as
+the install path for both local development and CI.
+
+Building it from crates.io on a GitHub runner turned out to be a poor fit. The
+compile pulls in `libdbus-sys`, which needs a system `libdbus-1-dev` the runner
+image does not carry, and even where the build succeeds it costs over four
+minutes on every cache miss. The `contract-build` job needs the binary and
+nothing else from it, so the entire compile is overhead.
+
+### Decision
+
+CI installs stellar-cli from the project's published release archive rather than
+compiling it. The download is pinned by SHA-256, checked with `sha256sum
+--check --strict` before the archive is unpacked, and the resulting binary is
+cached under a key carrying the version.
+
+This supersedes ADR-007's CI clause only. Local development still installs with
+`cd ~ && rustup run stable cargo install --locked --force stellar-cli`, and the
+two-toolchain model ADR-007 established is unchanged.
+
+### Alternatives considered
+
+**Install `libdbus-1-dev` in the workflow.** Rejected. It fixes the build failure
+but keeps the four-minute compile, and it adds a system package dependency to a
+job that only wants one binary.
+
+**Drop stellar-cli from CI.** Rejected. The `contract-build` job exists to prove
+the wasm artifact builds, which is the one check plain cargo cannot perform, and
+ADR-002 warns specifically about target regressions reaching deploy time.
+
+**Pin by version tag without a digest.** Rejected. A release asset can be
+replaced at its existing tag. The digest makes a swapped or truncated download
+fail at the check rather than silently producing a different binary.
+
+### Consequences
+
+- The workflow carries a `STELLAR_CLI_SHA256` value that must be updated
+  alongside `STELLAR_CLI_VERSION`. A mismatch fails the job loudly, which is the
+  intended behavior.
+- CI and local development install stellar-cli by different mechanisms. Both are
+  documented, and both produce the same pinned version.
+- Bumping stellar-cli is a two-line change plus a fresh digest.
+
+---
+
+## ADR-011: Declare each module in lib.rs as it lands
+Date: 2026-08-18
+Status: accepted
+
+### Context
+
+ADR-008 expanded step 13 to create a stub `lib.rs` so the crate would parse.
+The stub declared no modules, and the sequence placed the `mod` declarations at
+step 28, after every module file had landed.
+
+Step 14 showed what that costs. A module file that nothing declares is not
+compiled: cargo never reads it, rustfmt never formats it, and clippy never lints
+it. CI reported green on `error.rs` while nothing had checked whether it even
+parsed. Carrying that through step 27 would have stacked fourteen unverified
+files, with step 28 the first moment any of them met the compiler.
+
+### Decision
+
+Each step that creates a module file also declares it in `lib.rs` in the same
+commit. `mod error;` landed with `error.rs`, `mod storage;` with `storage.rs`,
+and so on.
+
+Step 28's role narrows accordingly, from introducing the module declarations to
+adding the `pub use` re-exports that expose the public surface. ADR-008
+anticipated that narrowing; this entry makes it explicit.
+
+### Alternatives considered
+
+**Keep the orphan files and verify each one by temporarily declaring it before
+committing.** Rejected. It works, and it was how step 14 was actually checked,
+but it makes verification procedural rather than mechanical. CI green stops
+meaning "the committed files compile", and the next contributor has no way to
+know the manual step exists.
+
+**Defer all module work to a single later commit.** Rejected. It undoes the
+incremental sequence and produces one unreviewable change.
+
+### Consequences
+
+- Every module-adding commit touches `lib.rs` by one line.
+- CI green means the committed code compiles, for every commit rather than for
+  the first one after step 28.
+- The `use soroban_sdk as _;` linker directive in the stub came out earlier than
+  ADR-008 predicted. That entry expected it to survive until step 28, because it
+  existed only to pull soroban-sdk in so its `#[panic_handler]` would be linked
+  into a `no_std` wasm build. Declaring `mod error;` at step 14 made `error.rs`
+  reference the SDK directly, which satisfied the linker on its own and made the
+  directive redundant fourteen steps early.
+
+---
+
+## ADR-012: Instance TTL bump of seven days
+Date: 2026-08-18
+Status: accepted
+
+### Context
+
+ADR-004 set a thirty-day TTL bump for both instance and persistent storage. When
+the constants were written, checking them against the canonical token contract in
+`stellar/soroban-examples` showed a different convention: seven days for the
+instance, thirty for balances, both expressed as multiples of a
+`DAY_IN_LEDGERS` constant.
+
+The showcase contract is a reference developers copy patterns from, which gives
+matching ecosystem convention more weight than it would otherwise carry.
+
+### Decision
+
+The instance bump is seven days. Persistent entries stay at thirty.
+
+This narrows ADR-004 rather than superseding it. That entry's split between
+instance and persistent storage stands, and so does its rule that instance TTL is
+extended at the top of every state-changing function. Only the specific duration
+for the instance changes.
+
+Both durations are expressed as multiples of `DAY_IN_LEDGERS`, itself derived
+from Stellar's roughly five second ledger close time, so the numbers read as
+durations rather than as unexplained constants. The threshold sits one day under
+the bump in both cases, following the same convention.
+
+### Alternatives considered
+
+**Keep thirty days for the instance.** Rejected. Instance state is small and gets
+bumped on nearly every state-changing call, so a shorter window costs almost
+nothing and keeps archived instances from lingering longer than they need to.
+
+**Match the token contract on both durations.** Not applicable: it already uses
+thirty days for balances, which is what ADR-004 chose.
+
+### Consequences
+
+- A contract left idle is archived after seven days rather than thirty. For a
+  testnet fixture this is acceptable and arguably desirable.
+- Balances outlive the instance that manages them. Restoring an archived instance
+  does not require restoring every balance, and vice versa.
+- The constants read as `7 * DAY_IN_LEDGERS` and `30 * DAY_IN_LEDGERS`, so
+  changing a duration is a change to one number with an obvious unit.
+
+---
+
+## ADR-013: TTL extension belongs with the write for persistent entries and at the entry point for instance state
+Date: 2026-08-18
+Status: accepted
+
+### Context
+
+Writing the storage helpers raised a question the spec answers only by example:
+which layer extends TTL. Section 6.1 shows the instance extension at the top of a
+public function and the persistent extension inside the balance write helper, but
+does not say why the two differ, and the asymmetry looks like an inconsistency
+until the storage semantics are considered.
+
+### Decision
+
+The rule follows the storage class, because the two classes have different TTL
+semantics.
+
+Instance storage shares one TTL with the contract instance. Extending it once
+per invocation covers every instance read and write in that call, so the
+extension lives at the public function's entry point through
+`extend_instance_ttl`, which is where ADR-004 already places it. Instance-write
+helpers such as `set_admin` perform only the write.
+
+Persistent storage carries a TTL per entry. Extending it is meaningful only in
+relation to a specific key, so the extension lives beside the write that creates
+or refreshes that entry. `set_balance` writes and extends together.
+
+The canonical token contract in `stellar/soroban-examples` follows exactly this
+split: `write_administrator` performs only the write, while `write_balance`
+writes and extends.
+
+### Alternatives considered
+
+**Extend in every write helper, including instance ones.** Rejected. A public
+function already extends the instance TTL at its entry, so a second call inside
+`set_admin` is a no-op that splits one responsibility across two layers and
+invites a reader to wonder which one is authoritative.
+
+**Extend only at public function entry, including for persistent entries.**
+Rejected. The entry point does not know which persistent key a helper will touch,
+so the extension would have to name the key twice or extend the wrong entry.
+
+### Consequences
+
+- Instance-write helpers are pure writes. Persistent-write helpers write and
+  extend.
+- `set_admin` and `set_balance` look inconsistent side by side, so the doc comment
+  on `set_admin` explains the asymmetry at the point a reader would question it.
+- Any future helper is classified by its storage class before it is written.
+- ADR-019 later carves out the read-only case, where a persistent read that will
+  not be followed by a write must not extend at all.
+
+---
+
+## ADR-014: Behavior-carrying helpers get tests; pass-throughs do not
+Date: 2026-08-18
+Status: accepted
+
+### Context
+
+Phase B lands types, storage helpers, and event definitions before any public
+function calls them. Applying test-first uniformly would have meant writing
+assertions for code with no observable behavior, and skipping it uniformly would
+have meant shipping untested decisions.
+
+Rust sharpens the question further. A test calling a function that does not exist
+is a compile error, not a failing assertion, so a test-only commit preceding its
+implementation leaves the branch unbuildable and CI red.
+
+### Decision
+
+A helper is behavior-carrying if it encodes a decision that a downstream reader
+depends on. Those get tests. A helper is a pass-through if it adds nothing the
+SDK does not already provide, and those are covered through the public functions
+that call them.
+
+The distinction is decision-carrying versus SDK-passthrough, not the narrower
+"has logic versus has no logic". `get_admin` converts an absent key into a typed
+error, `get_balance` extends TTL conditionally, and every event struct fixes a
+wire shape the decoder matches on. All are behavior-carrying. `set_admin` is a
+single unconditional SDK call and is not.
+
+Tests and implementation land in one commit for behavior-carrying work. Tests are
+still written first and the RED state verified locally, it simply does not get its
+own commit. Test-only commits remain valid when they close a coverage gap on
+behavior already shipped.
+
+Three practices make the tests worth having:
+
+**Mutation as specification.** For each behavior-carrying test, name the mutation
+that should fail it, introduce the mutation, and confirm exactly the expected
+tests fail. This states precisely which behavior each test guards.
+
+**Splitting is coverage-critical, not stylistic.** A test whose name needs "and"
+can hide which behaviors are covered, because one mutation failing one merged
+test is indistinguishable from one mutation failing the assertion that matters.
+The withdraw tests demonstrated this: merged, every mutation failed the single
+test and coverage looked complete; split, removing the balance check failed
+nothing, because no test yet withdrew more than the balance.
+
+**Value equivalence hides behavior differences.** Two implementations returning
+identical values can differ in side effects. Where a helper's contract includes
+both a return value and a side effect, assert both. `read_balance` and
+`get_balance` return the same number for the same input, and only a TTL
+assertion tells them apart.
+
+### Alternatives considered
+
+**Test every helper.** Rejected. Tests over pass-throughs restate the
+implementation or re-verify the SDK, and they cost review attention that the
+decision-carrying code deserves instead.
+
+**Test nothing until Phase C.** Rejected. It defers all feedback on the storage
+and event layer to the moment public functions arrive, which is when several
+failures at once are hardest to attribute.
+
+**Land the failing test as its own commit, as the sequence describes.** Rejected
+for the language reason above. Verified rather than assumed: a test calling an
+absent function fails with E0425 at compile time.
+
+### Consequences
+
+- Phase B commits pair tests with implementation. The sequence's separate test
+  and implementation steps collapse where it pairs them.
+- RED is verified locally and reported in the commit message rather than being
+  visible as a red commit on `main`.
+- Every commit on `main` builds, which keeps the three-consecutive-green release
+  gate meaningful.
+- Test-first surfaces problems in the test itself, not only in the code. Writing
+  tests after an implementation lets them bend to match whatever the code happens
+  to do.
+
+---
+
+## ADR-015: Test code may use expect with a descriptive message
+Date: 2026-08-18
+Status: accepted
+
+### Context
+
+Requirements section 5.1 forbids `unwrap`, `expect`, and `panic!` in contract
+code, because a panic in a deployed contract is an untyped failure a caller
+cannot handle. Test code has the opposite relationship to panics: a failing
+assertion is how a test reports, and the panic message is the diagnostic.
+
+### Decision
+
+Test code may use `.expect("message")` with a non-empty descriptive message. A
+bare `.expect("")` or an unwrap standing in for an assertion is not acceptable,
+because the panic then carries no more information than a line number.
+
+Production code, meaning everything under `src/` outside a `#[cfg(test)]` block,
+remains fully bound by the no-panic rule.
+
+The mechanical check enforces the same split: it scans `src/` up to the first
+`#[cfg(test)]` marker and skips integration tests under `tests/` entirely.
+
+### Alternatives considered
+
+**Apply the no-panic rule everywhere.** Rejected. It would force tests to convert
+every fallible setup step into a `Result` and propagate it, which adds noise to
+the part of a test that is not under test and makes failures report worse.
+
+**Allow anything in test code.** Rejected. A bare `unwrap` in a long test tells a
+reader nothing about which step failed, and test code is read most often at
+exactly the moment it has failed.
+
+### Consequences
+
+- Setup steps in tests read directly, with their failure messages naming the step.
+- The no-panic scanner is scoped rather than global, and its scoping is part of
+  the rule rather than an implementation detail.
+- A reviewer seeing `expect` in a diff checks which side of the boundary it is on.
+
+---
+
+## ADR-016: single-value data format enforces the topic and data split at compile time
+Date: 2026-08-18
+Status: accepted
+
+### Context
+
+Event structs annotate with `#[contractevent]`, which derives the wire shape from
+the declaration: `#[topic]` fields become topics and the rest become data. The
+macro's `data_format` defaults to `Map`, which encodes the data section as a map
+keyed by field name.
+
+The contract's events each carry one payload, and the decoder expects that
+payload as a bare value.
+
+### Decision
+
+Every payload-carrying event annotates `data_format = "single-value"`
+explicitly.
+
+The annotation is load-bearing twice. It encodes the payload as a bare value
+rather than a single-entry map, which is the shape the decoder reads. It also
+constrains the struct: `single-value` permits at most one non-topic field, so
+promoting a field to a topic or demoting one out of the topic set changes the
+data field count and fails compilation.
+
+That second property is the more valuable one. Moving a field between topics and
+data is a wire-contract change that no test would catch unless it happened to
+assert that exact event, and it is the kind of edit that looks like a formatting
+change in review. Under this annotation it is a build failure.
+
+### Alternatives considered
+
+**Let the default `Map` format stand.** Rejected. It changes every payload to a
+field-name-keyed map, which is a different wire shape from the one the decoder
+and the fixtures expect, and the field name becomes part of the wire contract.
+
+**Annotate only where the shape matters.** Rejected. It matters on every event,
+and a partially applied convention is one a contributor has to reason about
+rather than follow.
+
+### Consequences
+
+- Every event struct carries the annotation, including single-field ones.
+- Demoting a topic to data, or the reverse, is a compile error rather than a
+  silent wire change. Verified: removing `#[topic]` from `Deposit.from` fails to
+  build with "single-value requires exactly 0 or 1 data fields".
+- An event needing two data fields cannot use this format, and adding one is a
+  deliberate wire-shape decision rather than an incidental one.
+- The decoder can rely on every event this contract emits having its topics and
+  its payload cleanly separated.
+
+---
+
+## ADR-017: Read each balance immediately before its write
+Date: 2026-08-18
+Status: accepted
+
+### Context
+
+`transfer` touches two balance entries. Its first implementation read both
+balances up front, then wrote both:
+
+    let from_balance = get_balance(&env, &from);
+    let to_balance = get_balance(&env, &to);
+    set_balance(&env, &from, from_balance - amount);
+    set_balance(&env, &to, to_balance + amount);
+
+That is correct when the two addresses differ and wrong when they are the same.
+A self-transfer reads the same balance twice, then writes twice, and the second
+write is computed from a figure captured before the first write landed. The
+result is a balance inflated by the transferred amount: the contract mints value
+out of an aliasing bug.
+
+### Decision
+
+A function touching more than one balance entry reads each balance immediately
+before the write that consumes it, never both up front.
+
+    let from_balance = get_balance(&env, &from);
+    set_balance(&env, &from, from_balance - amount);
+    let to_balance = get_balance(&env, &to);
+    set_balance(&env, &to, to_balance + amount);
+
+The self-transfer test is a regression guard, not a curiosity. It asserts that a
+transfer to oneself leaves the balance unchanged, and it fails against the
+read-both-then-write-both ordering.
+
+### Alternatives considered
+
+**Reject self-transfers.** Rejected. It adds an error path for a case with no
+economic effect and no fraud potential, and SEP-41 does not require it, so a
+conformant consumer would not expect the rejection. It also fixes the symptom
+rather than the ordering that caused it: a future two-balance function would
+reproduce the same bug.
+
+**Detect aliasing explicitly and branch.** Rejected. It requires every
+multi-entry function to remember the check, whereas the ordering rule makes
+aliasing a non-event.
+
+### Consequences
+
+- Any future function touching multiple balance entries follows the ordering, and
+  gets a same-address test.
+- The self-transfer test must not be removed as redundant. It looks like it
+  asserts nothing, and it is the only test that fails against the aliasing bug.
+- The ordering is stated in a comment at the point in `transfer` where a reader
+  would otherwise be tempted to hoist the reads together.
+
+---
 
 ---
 
@@ -424,4 +858,61 @@ correctly. Reachability is not worth a weaker guard.
   and needs no new variant.
 - Discriminants are frozen from first deployment. This is the last commit in which
   renumbering is available.
+
+---
+
+## ADR-019: Separate read-only and read-before-write balance helpers
+Date: 2026-08-18
+Status: accepted
+
+### Context
+
+Adding the `balance` public view exposed a conflict between two rules already in
+force.
+
+ADR-013 pairs a persistent write with its TTL extension, which is why
+`get_balance` extends when it returns a live balance: it is the read half of a
+read-then-write, and the entry it returns is about to be written.
+
+ADR-004 says read views do not extend TTL, so observing a balance never keeps the
+entry alive. A public view routed through `get_balance` would have broken that
+rule, and removing the extension from `get_balance` would have broken ADR-013.
+
+### Decision
+
+Two helpers, each named for its caller.
+
+`get_balance` keeps the extend-on-positive-read behavior and is for
+state-changing functions where the read precedes a write to the same entry.
+`deposit`, `withdraw`, and `transfer` use it.
+
+`read_balance` reads persistent storage, returns zero for an absent key, and
+leaves the entry's lifetime exactly where it found it. The `balance` public view
+uses it, and so does any future read-only path.
+
+Both doc comments say which to use and why, because the two are otherwise
+indistinguishable at a call site.
+
+### Alternatives considered
+
+**Route the view through `get_balance`.** Rejected. Every read through the
+explorer would extend entry lifetimes, which is the behavior ADR-004 exists to
+prevent, and no test of the returned value would notice.
+
+**Remove the extension from `get_balance` and extend explicitly in each
+state-changing caller.** Rejected. It moves the pairing ADR-013 established out
+of the helper and into three call sites, where it can be forgotten.
+
+**Add a boolean parameter selecting whether to extend.** Rejected. Call sites
+would read `get_balance(&env, &addr, false)`, which says nothing about why.
+
+### Consequences
+
+- Two helpers differing by one side effect, distinguishable only by their TTL
+  behavior. The doc comments carry that weight.
+- The test that pins the difference asserts TTL rather than a value, since values
+  are identical by construction. Pointing `read_balance` at `get_balance` fails
+  only that test.
+- A future read-only accessor uses `read_balance`. A future state-changing one
+  uses `get_balance`.
 
