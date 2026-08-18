@@ -126,8 +126,10 @@ Structural work lands without paired tests and is covered through the public
 functions that call it. Do not expect every commit to add tests; whether pairing
 is required follows from which kind of work it is.
 
-For the methodology behind these rules, including how to verify a test actually
-covers what it claims, see `.agent/testing.md`. The reasoning is in ADR-014.
+These rules come from `docs/requirements.md` section 2, which governs both repos
+and wins where anything here differs. For the methodology behind them, including
+how to verify a test actually covers what it claims, see `.agent/testing.md`. The
+reasoning for the paired-commit pattern specifically is in ADR-014.
 
 ## Code rules
 

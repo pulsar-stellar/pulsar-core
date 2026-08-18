@@ -127,7 +127,7 @@ Two Rust rows, not one. stellar-cli 27.1.0 requires rustc 1.93.0 or newer to bui
 
 Coverage tooling needs both rows. `cargo-llvm-cov` is a host binary tool and installs on the stable channel for the reason ADR-007 gives for stellar-cli. The `llvm-tools` component is not present by default because `rust-toolchain.toml` sets `profile = "minimal"`, which omits it, so a fresh clone cannot measure coverage until it is added. The 85 percent line coverage floor is a release gate, so both belong in a working setup rather than in a contributor's later surprise.
 
-Verification script at `pulsar-app/scripts/verify-toolchain.sh` runs `<tool> --version` for each and asserts minimum version. Runs at scaffold time and before every major sprint.
+A verification script at `pulsar-app/scripts/verify-toolchain.sh`, running `<tool> --version` for each entry and asserting the minimum, is planned for `pulsar-app` scaffolding at Sprint 2 start. Until it exists, check the versions by hand.
 
 ### 1.9 CI/CD
 
@@ -152,23 +152,36 @@ Not adopted by default; each requires an ADR to bring in.
 
 ## 2. Test discipline (enforced across both repos)
 
-Non-negotiable. Enforced in CI. Blocking on PR merge.
+Non-negotiable and blocking on PR merge. Formatting, lints, the test suite, and the
+contract build are enforced mechanically in CI. The rules below that no script
+yet checks are enforced in review, and each says so rather than implying a gate
+that does not exist.
 
 ### 2.1 Test-case-per-implementation rule
 
 Every code commit satisfies one of these three:
 
 1. It is a test commit (adds or modifies test files only)
-2. It adds or modifies implementation code AND a preceding commit contains the failing test that this implementation makes pass
+2. It adds or modifies implementation code AND the failing test that this implementation makes pass was written first and observed to fail
 3. It is a scaffolding commit (Cargo.toml edits, tsconfig.json, folder structure, no logic)
 
-No merged PR contains code changes without corresponding test changes. Enforced by PR template checklist and CI diff-check script (`scripts/verify-test-parity.sh`).
+How rule 2 is satisfied depends on the language. Where a test can reference code
+that does not exist yet and fail at run time, as in Go and TypeScript, the test
+lands in its own commit and the implementation follows. In Rust a test against a
+missing function is a compile error rather than a failing assertion, so a
+test-only commit would leave the branch unbuildable; there, tests and
+implementation land together and RED is verified locally before the
+implementation is written, with the compiler serving as the failing-test check.
+See ADR-014 in `pulsar-core/.agent/decisions.md`.
+
+No merged PR contains code changes without corresponding test changes. Enforced in review. A diff-check script and PR template checklist are planned and do not exist yet, so this rule currently depends on a reviewer applying it.
 
 Rare exceptions require an ADR entry justifying why the code cannot be tested (example: build script that only runs during publish).
 
 ### 2.2 Coverage minimums
 
-Enforced in CI. PR blocking if coverage drops below floor.
+Measured locally before submitting and checked in review. A CI job that blocks a
+PR on a coverage drop is planned and does not exist yet.
 
 | Sub-stack | Floor | Measurement tool |
 |---|---|---|
@@ -179,7 +192,7 @@ Enforced in CI. PR blocking if coverage drops below floor.
 
 Critical components in the frontend are the ones users depend on for the core flow: `event-table`, `event-row`, `event-detail`, `filter-bar`, `contract-input`, `export-json`. Presentational components (Skeleton wrappers, layout shells) are exempt.
 
-Coverage measured on `main` merges and reported as a PR comment. Coverage badges in READMEs.
+Coverage reporting on `main` merges, PR comments, and README badges are planned. None are in place.
 
 ### 2.3 Test types per layer
 
@@ -246,6 +259,12 @@ CI matrix:
 
 ---
 
+`pulsar-core` maintains `.agent/testing.md` as elaboration of this section, with
+Rust-specific methodology, mutation-check patterns, and worked examples cited from
+Sprint 1's execution. It expands these rules rather than replacing them: where the
+two differ, this section wins. `pulsar-app`'s equivalent lands during that repo's
+sprint work.
+
 ## 3. Context folder full specification
 
 Every repo has a `.agent/` folder. These files are load-bearing for continuity across AI sessions and human onboarding. Kept current at every phase transition.
@@ -305,7 +324,7 @@ Table of every direct dependency:
 
 - Updated at every dependency change
 - Monthly review cycle documented
-- Format machine-readable enough that a script can lint it (`scripts/verify-dependency-audit.sh` in each repo)
+- Format machine-readable enough that a script can lint it. Such a script (`scripts/verify-dependency-audit.sh` in each repo) is planned and does not exist yet
 
 Any dependency addition or version bump requires an ADR entry cross-referenced from this table.
 
