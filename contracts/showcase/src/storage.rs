@@ -7,11 +7,6 @@
 //! Temporary storage is deliberately unused: nothing this contract stores is
 //! disposable.
 
-// #![allow(dead_code)] necessary through Phase B because storage helpers land
-// before their callers in contract.rs (step 27). Remove this line as part of
-// the step 27 commit when contract.rs adds the calls.
-#![allow(dead_code)]
-
 use soroban_sdk::{contracttype, Address, Env};
 
 use crate::error::Error;
@@ -31,8 +26,8 @@ pub(crate) const DAY_IN_LEDGERS: u32 = 17_280;
 /// patterns from, which is why it matches the ecosystem convention rather than
 /// picking its own number.
 ///
-/// ADR-004 specified thirty days uniformly for instance and persistent storage.
-/// ADR-012 corrects that at the end of Phase B.
+/// ADR-004 specified thirty days uniformly for both storage classes. ADR-012
+/// narrows that to seven for the instance, leaving persistent entries at thirty.
 pub(crate) const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
 
 /// Bump the instance only once its remaining life drops below this.

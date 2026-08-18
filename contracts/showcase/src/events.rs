@@ -24,11 +24,6 @@
 //! A version topic alongside that would be a second, independently driftable
 //! signal for the same fact.
 
-// #![allow(dead_code)] necessary while the event definitions land ahead of their
-// callers in contract.rs. Remove this line as part of the step 27 commit when
-// contract.rs adds the calls.
-#![allow(dead_code)]
-
 use soroban_sdk::{contractevent, Address, Bytes, Symbol};
 
 /// Marks successful contract initialization.
