@@ -9,7 +9,7 @@ Pulsar Stellar is a developer toolkit for Soroban contract events. Every Stellar
 - **`pulsar-showcase`**: the reference Soroban contract. Every function on it exists to exercise a specific decoder capability, which makes its emitted events the test fixture and documentation demo for the rest of the toolkit.
 - **`pulsar-decoder`**: the crate that turns raw contract events into typed data, published to crates.io from v0.2.0-contracts onward.
 
-The sibling repository `pulsar-stellar/pulsar-app` carries the TypeScript SDK, the Go indexer, the web explorer, and the documentation site.
+The sibling repository [`pulsar-stellar/pulsar-app`](https://github.com/pulsar-stellar/pulsar-app) carries the TypeScript SDK, the Go indexer, and the web explorer. Documentation is maintained in the separate `pulsar-stellar/pulsar-docs` repository and publishes through GitBook.
 
 ## Status
 
@@ -26,6 +26,15 @@ tested.
 
 The first release is `v0.1.0-contracts`, which ships the showcase contract
 deployed to Stellar testnet with its contract ID recorded in the tag body.
+
+## Related resources
+
+- Release tag: [`v0.1.0-contracts`](https://github.com/pulsar-stellar/pulsar-core/releases/tag/v0.1.0-contracts)
+- Application layer: [`pulsar-stellar/pulsar-app`](https://github.com/pulsar-stellar/pulsar-app)
+- Decision log (ADRs): [`.agent/decisions.md`](.agent/decisions.md)
+
+The `pulsar-decoder` crate is not on crates.io yet; it is published from
+`v0.2.0-contracts` onward.
 
 ## Quickstart
 
