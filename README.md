@@ -1,6 +1,36 @@
 # Pulsar Core
 
+[![CI](https://github.com/pulsar-stellar/pulsar-core/actions/workflows/ci.yml/badge.svg)](https://github.com/pulsar-stellar/pulsar-core/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/badge/release-v0.1.0--contracts-blue.svg)](https://github.com/pulsar-stellar/pulsar-core/releases/tag/v0.1.0-contracts)
+[![Network](https://img.shields.io/badge/testnet-live-brightgreen.svg)](https://stellar.expert/explorer/testnet/contract/CDNWTVUDKCCGW7GOC6SBLUFXXUCD2YDHWRDUSXZ6CYBQKQWLCUYYWI5L)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 Pulsar Stellar is a developer toolkit for Soroban contract events. Every Stellar project that needs to consume its contract's events today writes the same plumbing from scratch: XDR decoders, indexer glue, custom APIs. Pulsar Stellar provides three shared building blocks so they don't have to. A Rust library that turns raw contract events into typed data, a Go daemon that stores historical events past the seven-day RPC retention window, and a web explorer where anyone can paste a contract ID and browse every event that contract has ever emitted, decoded and searchable. It serves Soroban dapp builders, backend engineers integrating with existing protocols, and auditors reviewing contract behavior post-deployment.
+
+## Where this repository sits
+
+The toolkit is three repositories. A contract emits events; `pulsar-core` (this
+repo) provides the reference contract and the Rust decoder; `pulsar-app` indexes,
+serves, and displays those events; `pulsar-docs` documents the whole.
+
+```mermaid
+flowchart LR
+    subgraph core["pulsar-core (this repository)"]
+        SC["pulsar-showcase<br/>reference contract"]
+        DEC["pulsar-decoder<br/>typed decoder crate"]
+    end
+    SC -->|emits events| RPC["Soroban RPC"]
+    SC -.->|events are the test fixture| DEC
+    RPC -->|poll, decode, store, serve| APP["pulsar-app<br/>SDK, indexer, explorer"]
+    DEC -.->|typed decoding, v0.2 onward| APP
+    APP --> USER["dapp builders, backends, auditors"]
+```
+
+`pulsar-showcase` is the anchor the rest of the toolkit is calibrated against:
+every function it exposes exists to emit a specific event shape, so its events
+are both the decoder's test fixtures and the demo the SDK and explorer are built
+to read. `pulsar-decoder` is the canonical Rust and browser decoder for that data,
+a placeholder until `v0.2.0-contracts`.
 
 ## What this repository holds
 
@@ -26,6 +56,25 @@ tested.
 
 The first release is `v0.1.0-contracts`, which ships the showcase contract
 deployed to Stellar testnet with its contract ID recorded in the tag body.
+
+## Roadmap
+
+The full roadmap lives in [`docs/roadmap-core.md`](docs/roadmap-core.md). This
+repository ships two artifacts that version independently but align to
+product-level milestones. Releases are tagged `v{MAJOR}.{MINOR}.{PATCH}-contracts`.
+
+| Release | Scope | State |
+|---|---|---|
+| `v0.1.0-contracts` | `pulsar-showcase` reference contract on testnet | done, deployed and initialized |
+| `v0.2.0-contracts` | `pulsar-decoder` crate first release, published to crates.io | planned |
+| `v0.3.0-contracts` | SEP-41 token showcase contract | planned |
+| `v0.4.0-contracts` | wasm bindings for browser-side decoding | planned |
+| `v0.5.0-contracts` | `pulsar-events` derive macros for contract authors | planned |
+| `v1.0.0-contracts` | audit-ready, mainnet-committed, semver-stable API | planned |
+
+Each milestone past v0.1 is deferred by choice with an explicit trigger recorded
+in the roadmap, not dropped. The decoder crate does not block the app layer: the
+`pulsar-app` indexer carries its own Go decoder until the wasm path lands.
 
 ## Related resources
 
