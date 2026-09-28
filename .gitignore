@@ -24,3 +24,8 @@ identity/
 .DS_Store
 *.swp
 .idea/
+
+# Maintainer-local planning drafts. Not tracked; the tracked planning notes and
+# decisions live in .agent/ and docs/. This is a symlink to a sibling checkout,
+# so the pattern carries no trailing slash (that would match only a directory).
+docs/planning
