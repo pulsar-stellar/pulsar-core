@@ -1,21 +1,39 @@
 //! Typed decoder for Soroban contract events.
 //!
-//! Placeholder. The crate exists so the workspace layout, the published name, and
-//! the release plan are settled before any API is written, not because there is
-//! anything to use yet.
-//!
-//! The decoder turns raw contract events into typed data, and it is the
-//! correctness boundary for every downstream consumer of this toolkit: the Go
+//! This crate turns the raw `ScVal` values a Soroban contract emits into the
+//! [`DecodedValue`] taxonomy that the rest of the Pulsar toolkit reads: the Go
 //! indexer, the TypeScript SDK, and the web explorer all depend on it agreeing
-//! with what contracts actually emit. That is why it carries a higher review bar
-//! than anything else here, and why its fixtures come from real emitted events
-//! rather than hand-built XDR.
+//! with what contracts actually emit. That shared wire contract is fixed by
+//! pulsar-app ADR-023, so a change to the taxonomy here is a coordinated change
+//! across every consumer.
 //!
-//! The wire shapes it will decode are specified in `docs/requirements.md` section
-//! 8.4, and `pulsar-showcase` emits every one of them. Those events are the
-//! fixtures this crate is tested against.
+//! # What this crate decodes
 //!
-//! Real content lands at v0.2.0-contracts, deliberately after the app repo
-//! demonstrates what shape consumers need. Designing the API in isolation and
-//! reworking it later costs more than waiting.
-#![no_std]
+//! [`DecodedValue`] is a discriminated union keyed by a `type` string. It
+//! serializes to, and deserializes from, exactly the JSON the other
+//! implementations already produce, so a value stored by the indexer round trips
+//! through this crate unchanged. Integers wider than 53 bits are carried as
+//! decimal strings rather than JSON numbers, which would round silently.
+//!
+//! A value this crate cannot name does not become an error: it becomes
+//! [`DecodedValue::Unknown`], carrying its base64 XDR intact, so a protocol
+//! upgrade that adds an `ScVal` variant does not stop an old consumer from
+//! reading new data.
+//!
+//! # Scope
+//!
+//! This crate decodes values and topic lists, and assembles an event from parts
+//! a caller already holds. It does not parse RPC envelopes and makes no network
+//! calls; fetching events belongs to the indexer. See the workspace ADR log for
+//! the recorded scope boundary.
+//!
+//! # Panics
+//!
+//! Nothing in this crate's public API panics on malformed input. Decoding is
+//! fallible and total: bad bytes return an error, and an unnameable value
+//! degrades to [`DecodedValue::Unknown`].
+
+mod hex;
+mod value;
+
+pub use value::{DecodedValue, MapEntry};

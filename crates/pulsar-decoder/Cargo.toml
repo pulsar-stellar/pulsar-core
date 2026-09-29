@@ -7,17 +7,21 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-# Not published while the crate is a placeholder. Publishing begins when the
-# decoder has real content, at v0.2.0-contracts.
+# Not published while the workspace is pre-0.2.0. The decoder now carries real
+# content; the release gate flips to published when the version reaches
+# v0.2.0-contracts. See ADR-020.
 publish = false
 
 [lib]
 crate-type = ["rlib"]
 
-# No dependencies yet. The decoder's public API is deliberately designed after
-# the app repo demonstrates what shape consumers need, so adding soroban-sdk or
-# an XDR crate now would be guessing at that shape.
+# serde carries the DecodedValue wire contract (ADR-021). serde_json is a
+# test-only harness for the shared JSON fixtures.
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
 
 [lints]
 workspace = true
