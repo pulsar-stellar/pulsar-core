@@ -15,10 +15,15 @@ publish = false
 [lib]
 crate-type = ["rlib"]
 
+# stellar-xdr is the canonical ScVal type set the decoder reads from. The
+# `curr` feature selects the current protocol XDR, `std` gives owned collections
+# and the error impls, and `base64` provides the base64 XDR codec used for the
+# Unknown fallback and decode_base64. See ADR-020 and ADR-022.
 # serde carries the DecodedValue wire contract (ADR-021). serde_json is a
 # test-only harness for the shared JSON fixtures.
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+stellar-xdr = { workspace = true, features = ["std", "curr", "base64"] }
 
 [dev-dependencies]
 serde_json = "1"

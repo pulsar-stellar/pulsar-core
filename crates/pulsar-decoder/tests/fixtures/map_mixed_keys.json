@@ -1,0 +1,25 @@
+{
+  "type": "map",
+  "value": [
+    {
+      "key": {
+        "type": "symbol",
+        "value": "count"
+      },
+      "value": {
+        "type": "u32",
+        "value": 3
+      }
+    },
+    {
+      "key": {
+        "type": "u32",
+        "value": 1
+      },
+      "value": {
+        "type": "string",
+        "value": "hello world"
+      }
+    }
+  ]
+}

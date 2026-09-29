@@ -1,0 +1,25 @@
+{
+  "type": "vec",
+  "value": [
+    {
+      "type": "bool",
+      "value": true
+    },
+    {
+      "type": "vec",
+      "value": [
+        {
+          "type": "u32",
+          "value": 1
+        },
+        {
+          "type": "symbol",
+          "value": "inner"
+        }
+      ]
+    },
+    {
+      "type": "void"
+    }
+  ]
+}

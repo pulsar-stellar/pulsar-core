@@ -17,6 +17,10 @@ authors = ["Pulsar Stellar maintainers"]
 # Held at 26.1.0 stable by ADR-001. Do not move to 27.0.0-rc.
 [workspace.dependencies]
 soroban-sdk = "=26.1.0"
+# stellar-xdr is the canonical Rust XDR type set. Pinned to the version the
+# soroban-sdk pin already resolves in Cargo.lock, verified directly rather than
+# read off a changelog. Features are chosen per consuming crate. See ADR-020.
+stellar-xdr = "=26.0.1"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

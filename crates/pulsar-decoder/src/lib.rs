@@ -22,10 +22,11 @@
 //!
 //! # Scope
 //!
-//! This crate decodes values and topic lists, and assembles an event from parts
-//! a caller already holds. It does not parse RPC envelopes and makes no network
-//! calls; fetching events belongs to the indexer. See the workspace ADR log for
-//! the recorded scope boundary.
+//! This crate decodes values and an event's topic list. It does not parse RPC
+//! envelopes and makes no network calls; fetching events belongs to the indexer.
+//! Assembling a decoded event from parts a caller already holds is a planned
+//! addition on this crate and is not part of this release. See the workspace ADR
+//! log for the recorded scope boundary.
 //!
 //! # Panics
 //!
@@ -33,7 +34,11 @@
 //! fallible and total: bad bytes return an error, and an unnameable value
 //! degrades to [`DecodedValue::Unknown`].
 
+mod decoder;
+mod error;
 mod hex;
 mod value;
 
+pub use decoder::Decoder;
+pub use error::DecodeError;
 pub use value::{DecodedValue, MapEntry};
