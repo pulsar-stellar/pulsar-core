@@ -916,3 +916,176 @@ would read `get_balance(&env, &addr, false)`, which says nothing about why.
 - A future read-only accessor uses `read_balance`. A future state-changing one
   uses `get_balance`.
 
+---
+
+## ADR-020: The pulsar-decoder implementation leaves no_std for std
+Date: 2026-09-29
+Status: accepted
+
+### Context
+
+The crate shipped as a `#![no_std]` placeholder. It is now being implemented for
+real, targeting v0.2.0-contracts. Its job is to parse Soroban `ScVal` XDR that
+arrives from RPC and render it into the shared DecodedValue taxonomy, so it
+decodes untrusted wire bytes and produces JSON that must agree with the Go indexer
+and the TypeScript SDK.
+
+Three needs settle the platform question:
+
+- Base64 XDR decoding. `stellar-xdr` exposes `from_xdr_base64` / `to_xdr_base64`
+  only behind its `base64` feature, which pulls in `std`.
+- Rendering. The strkey `Display` on `ScAddress` and the decimal `Display` on
+  `Int128Parts`, `UInt128Parts`, `Int256Parts`, `UInt256Parts` are gated on the
+  `alloc` feature.
+- JSON. The wire contract is JSON, so `serde` is a core dependency and
+  heap-allocated `String` / `Vec` are unavoidable.
+
+This crate never runs on-chain. It runs in the host toolchain beside the indexer
+and the SDK, so the no_std constraint that governs the contract crates buys it
+nothing.
+
+### Decision
+
+Drop `#![no_std]`. The crate is a `std` library.
+
+Dependencies, all consistent with the workspace pin of `soroban-sdk = "=26.1.0"`:
+
+- `stellar-xdr = "=26.0.1"`, features `["std", "curr", "base64"]`, added to
+  `[workspace.dependencies]` and referenced with `workspace = true`. The version
+  is exact, following the same `soroban-* / stellar-*` pin policy as ADR-001, and
+  it is the version `soroban-sdk 26.1.0` already resolves to. This was verified by
+  reading `Cargo.lock` directly (`stellar-xdr 26.0.1`), not a changelog.
+- `serde = { version = "1", features = ["derive"] }`. Non-stellar, so a caret
+  range, matching common practice for a stable 1.x API.
+- `serde_json` as a dev-dependency only, for fixture tests. The library emits
+  DecodedValue through `serde` and does not bind a format.
+
+No direct `stellar-strkey` dependency. Address encoding uses the `Display` on
+`ScAddress`, which is the canonical strkey rendering, and this keeps a second copy
+of that crate out of our direct graph.
+
+Untrusted input is parsed under a bounded `Limits`, never `Limits::none()`. A
+depth and length cap protects the parser from a hostile or malformed value driving
+unbounded recursion or allocation. `Limits::none()` is used only when re-encoding
+a value this crate has already parsed and holds in memory.
+
+### Alternatives considered
+
+**Stay no_std with alloc.** Rejected. It would forfeit `from_xdr_base64`, the
+strkey and decimal `Display` impls, and force a hand-rolled base64 and big-integer
+path, all to satisfy a constraint that only matters for on-chain code. This crate
+is not on-chain.
+
+**Depend on `stellar-strkey` directly.** Rejected. `ScAddress: Display` already
+produces the strkey form, and a direct dependency would pin a second copy (0.0.16
+is also in the tree via soroban-sdk) against the one stellar-xdr uses (0.0.13),
+inviting a mismatch for no gain.
+
+**Parse with `Limits::none()`.** Rejected for untrusted input. The bytes come from
+RPC and are attacker-influenced; an unbounded depth limit risks a stack-exhausting
+`SIGABRT`, which the no-panic posture of this crate is meant to preclude.
+
+### Consequences
+
+- The crate builds on std and cannot be reused on-chain. That is intended.
+- `stellar-xdr` is pinned exactly at the version `soroban-sdk` resolves to, so an
+  SDK bump and an XDR bump move together by decision, not by drift.
+- Wide integers and addresses are handled without hand-rolled big-integer
+  arithmetic: 128-bit values reconstruct into Rust's native `i128` / `u128`,
+  256-bit values (which Rust lacks) are rendered by stellar-xdr's `Display`, and
+  addresses by `ScAddress`'s strkey `Display`.
+- A malformed or hostile value fails to parse with an error, or is held within the
+  depth and length caps, rather than aborting the process.
+- `publish = false` stays until the workspace version reaches v0.2.0-contracts:
+  the content lands now, the release gate flips later.
+
+---
+
+## ADR-021: DecodedValue is a typed enum, and the decoder's scope boundary
+Date: 2026-09-29
+Status: accepted
+
+### Context
+
+pulsar-app ADR-023 fixes a DecodedValue taxonomy that is the wire contract shared
+by the Go indexer, the TypeScript SDK, and this crate. It states the Rust decoder
+must produce those variants, including the unknown fallback. The proven Go
+implementation at `indexer/internal/decoder` is the reference.
+
+Two shapes have to be decided for Rust: how DecodedValue is modeled in the type
+system, and where this crate's responsibility ends.
+
+The Go type carries a `Type` string and an `any` value, validated at the client
+with Zod. Go has no sum type, so the string tag is how it discriminates. Rust has
+sum types.
+
+The Go package decodes values and topic lists only. Event assembly (name,
+eventIndex, id, and the success flag from ADR-026) lives in the indexer's
+rpc/models/store packages, not in the decoder, and the RPC envelope is the
+indexer's concern.
+
+### Decision
+
+Model DecodedValue as a Rust enum with one variant per taxonomy type, not a
+tag-plus-`any` struct. `Serialize` and `Deserialize` are hand-written to produce
+and accept exactly the ADR-023 JSON: a `type` discriminant, the payload under
+`value` for most variants, map entries as an ordered array of `{key, value}` under
+`value`, `void` carrying no payload, the unknown fallback carrying `xdr`, 32-bit
+signed and unsigned as JSON numbers, wider integers and timepoint and duration as
+decimal strings, bytes as lowercase hex.
+
+There is no silent catch-all arm. Every `ScVal` this crate cannot name (`Error`,
+`ContractInstance`, `LedgerKeyContractInstance`, `LedgerKeyNonce`) maps to an
+explicit `Unknown` variant carrying the value's re-encoded base64, and a counter
+records how often that path is taken, mirroring the Go decoder's degrade-loudly
+design.
+
+Two deliberate divergences from Go, both safe:
+
+- A parsed `ScAddress` always renders, because it is a validated enum with a total
+  `Display`. Go degrades a malformed address to unknown; in Rust an address that
+  parsed cannot be malformed, so there is no such path.
+- Wide integers and addresses are not hand-rolled. Go ports big-integer
+  arithmetic and strkey encoding because it lacks both. Rust reconstructs 128-bit
+  values into native `i128` / `u128`, renders 256-bit values (which it lacks) with
+  stellar-xdr's `Display`, and encodes addresses with `ScAddress`'s `Display`.
+
+Scope: this crate decodes single values, topic lists, and assembles a
+`DecodedEvent` from parts the caller already holds (ledger sequence, event index,
+id, success flag). It does not parse the RPC `getEvents` envelope and does not read
+the network. That envelope stays the caller's concern, matching the Go split.
+
+Fixtures are reused from the Go corpus at
+`indexer/internal/decoder/testdata/fixtures`, paired `<name>.xdr` and
+`<name>.json`, after confirming their provenance from that directory's README: the
+deposit, transfer, and withdraw cases are real testnet events, and the rest are
+constructed for boundary coverage. Reusing them is how the two implementations are
+held to one contract.
+
+### Alternatives considered
+
+**A tag-plus-`serde_json::Value` struct, mirroring Go's `any`.** Rejected. It
+would push type errors to runtime and discard the one advantage Rust has here. The
+enum makes an unrepresentable value a compile error.
+
+**Derive serde with a tagged representation.** Rejected. No single derive produces
+this shape: the payload key changes (`value` versus `xdr`), `void` has no payload,
+`map` nests entries, and integer width decides number versus string. The
+hand-written impl is the contract, and it is tested against the shared fixtures.
+
+**Decode the RPC envelope here too.** Rejected. It would widen the crate past the
+Go reference's boundary and couple the correctness layer to a network shape that
+belongs to the caller.
+
+### Consequences
+
+- A DecodedValue that round-trips through JSON is identical to the Go output for
+  the same input, checked against shared fixtures.
+- An unrepresentable value cannot be constructed; the compiler enforces the
+  taxonomy.
+- A new ScVal variant from a protocol upgrade lands in `Unknown` and increments
+  the counter, so it is visible in operation rather than silently dropped.
+- The crate stays a pure decoder: no network, no envelope parsing, testable from
+  bytes alone.
+- The address and wide-integer paths cannot drift from stellar-xdr's rendering.
+
