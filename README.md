@@ -29,33 +29,58 @@ flowchart LR
 `pulsar-showcase` is the anchor the rest of the toolkit is calibrated against:
 every function it exposes exists to emit a specific event shape, so its events
 are both the decoder's test fixtures and the demo the SDK and explorer are built
-to read. `pulsar-decoder` is the canonical Rust and browser decoder for that data,
-a placeholder until `v0.2.0-contracts`.
+to read. `pulsar-decoder` is the Rust decoder for that data. It is implemented in
+this tree and checked against the same fixture corpus as the Go indexer's decoder,
+but it is not published yet; the browser build comes with `v0.4.0-contracts`.
 
 ## What this repository holds
 
 `pulsar-core` is the Rust contract layer. It carries two artifacts that co-evolve:
 
 - **`pulsar-showcase`**: the reference Soroban contract. Every function on it exists to exercise a specific decoder capability, which makes its emitted events the test fixture and documentation demo for the rest of the toolkit.
-- **`pulsar-decoder`**: the crate that turns raw contract events into typed data, published to crates.io from v0.2.0-contracts onward.
+- **`pulsar-decoder`**: the crate that turns raw `ScVal` XDR into the `DecodedValue` taxonomy every Pulsar consumer reads. It decodes values and topic lists today; event assembly and the crates.io release are the rest of `v0.2.0-contracts`.
 
 The sibling repository [`pulsar-stellar/pulsar-app`](https://github.com/pulsar-stellar/pulsar-app) carries the TypeScript SDK, the Go indexer, and the web explorer. Documentation is maintained in the separate `pulsar-stellar/pulsar-docs` repository and publishes through GitBook.
 
+## Event shapes
+
+The showcase contract emits six events. Each is declared once in
+[`contracts/showcase/src/events.rs`](contracts/showcase/src/events.rs) with an
+explicit wire Symbol, so renaming a Rust type cannot change what goes on chain.
+Every event carries a single bare data value rather than a map.
+
+| Wire Symbol | Emitted by | Topics after the Symbol | Data |
+|---|---|---|---|
+| `initialize` | `initialize` | none | admin `Address` |
+| `deposit` | `deposit` | `from: Address` | amount `i128` |
+| `withdraw` | `withdraw` | `to: Address` | amount `i128` |
+| `transfer` | `transfer` | `from: Address`, `to: Address` | amount `i128` |
+| `admin_change` | `set_admin` | `new_admin: Address` | old admin `Address` |
+| `custom` | `emit_custom` | `tag: Symbol`, chosen by the caller | payload `Bytes` |
+
+`transfer` follows the SEP-41 topic order. `custom` is the hard case for a
+decoder: its second topic is computed at runtime and its payload is opaque bytes.
+These shapes are a public interface, so changing one is a breaking change for
+every consumer.
+
 ## Status
 
-Sprint 1. The contract is complete and its full public surface is implemented and
-tested.
+`v0.1.0-contracts` is released and the showcase contract is live on testnet. The
+decoder crate is implemented but not yet released.
 
 | Artifact | State |
 |---|---|
 | `pulsar-showcase` contract | complete, 8 public functions, 6 event types |
-| Test suite | 54 tests, 98.7 percent line coverage |
-| `pulsar-decoder` crate | placeholder, real content at v0.2.0-contracts |
+| Contract tests | 54 tests, 98.7 percent line coverage |
+| `pulsar-decoder` crate | implemented: `Decoder::decode_base64`, `decode_topics`, and `decode` over the full `DecodedValue` taxonomy, with an `unknown` fallback instead of errors |
+| Decoder tests | 50 unit tests plus a 31-case fixture corpus shared with the Go indexer, 94.8 percent line coverage |
 | Testnet deployment | live, see Deployment below |
-| Published crate | not published |
+| Published crate | not published (`publish = false` until `v0.2.0-contracts`) |
 
-The first release is `v0.1.0-contracts`, which ships the showcase contract
-deployed to Stellar testnet with its contract ID recorded in the tag body.
+The decoder's output is the JSON wire contract fixed by pulsar-app ADR-023, so a
+value the indexer stores reads back through this crate unchanged. Event assembly
+(`DecodedEvent`), a fuzz target, and the crates.io release are what remain before
+`v0.2.0-contracts`.
 
 ## Roadmap
 
@@ -66,7 +91,7 @@ product-level milestones. Releases are tagged `v{MAJOR}.{MINOR}.{PATCH}-contract
 | Release | Scope | State |
 |---|---|---|
 | `v0.1.0-contracts` | `pulsar-showcase` reference contract on testnet | done, deployed and initialized |
-| `v0.2.0-contracts` | `pulsar-decoder` crate first release, published to crates.io | planned |
+| `v0.2.0-contracts` | `pulsar-decoder` crate first release, published to crates.io | in progress: value and topic decoding merged, event assembly and publish pending |
 | `v0.3.0-contracts` | SEP-41 token showcase contract | planned |
 | `v0.4.0-contracts` | wasm bindings for browser-side decoding | planned |
 | `v0.5.0-contracts` | `pulsar-events` derive macros for contract authors | planned |
@@ -80,6 +105,9 @@ in the roadmap, not dropped. The decoder crate does not block the app layer: the
 
 - Release tag: [`v0.1.0-contracts`](https://github.com/pulsar-stellar/pulsar-core/releases/tag/v0.1.0-contracts)
 - Application layer: [`pulsar-stellar/pulsar-app`](https://github.com/pulsar-stellar/pulsar-app)
+- Showcase contract on testnet: [stellar.expert](https://stellar.expert/explorer/testnet/contract/CDNWTVUDKCCGW7GOC6SBLUFXXUCD2YDHWRDUSXZ6CYBQKQWLCUYYWI5L)
+- Decoder crate source and fixtures: [`crates/pulsar-decoder`](crates/pulsar-decoder)
+- Roadmap: [`docs/roadmap-core.md`](docs/roadmap-core.md)
 - Decision log (ADRs): [`.agent/decisions.md`](.agent/decisions.md)
 
 The `pulsar-decoder` crate is not on crates.io yet; it is published from
@@ -135,9 +163,9 @@ stellar contract invoke \
   --source deployer \
   --network testnet \
   -- initialize --admin <ADMIN_ADDRESS>
+```
 
 Calling it twice returns `Error(Contract, #1)`, which is `AlreadyInitialized`.
-```
 
 The admin address authorizes `set_admin` and `emit_custom`. Rotation requires the
 current admin's signature, so a lost admin key cannot be recovered.
