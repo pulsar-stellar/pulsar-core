@@ -21,7 +21,7 @@ use stellar_xdr::curr::{Limits, ReadXdr, ScVal, WriteXdr};
 /// The number of `.xdr`/`.json` pairs in the corpus. Asserted so a glob that
 /// silently matches nothing, or a half-copied corpus, fails loudly rather than
 /// passing by vacuously iterating an empty set.
-const EXPECTED_FIXTURE_COUNT: usize = 31;
+const EXPECTED_FIXTURE_COUNT: usize = 32;
 
 fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
