@@ -14,7 +14,7 @@ That paragraph is locked wording. Reuse it verbatim wherever the project is desc
 
 **`pulsar-showcase`** is a reference contract, not a product. Every function on it exists to exercise a specific decoder capability. `transfer` produces a three-topic event that doubles as the SEP-41 conformance case. `emit_custom` produces a dynamic Symbol topic with a Bytes payload, which is the case that breaks naive decoders. Its events are the fixtures the rest of the toolkit tests against, which is why the contract stays small and why its scope is closed at six state-changing functions and two read views.
 
-**`pulsar-decoder`** is the typed event decoder, the correctness boundary for every downstream consumer. It ships as a placeholder in v0.1.0-contracts and gets its real content at v0.2.0-contracts, deliberately after the app repo proves what shape consumers actually need. Designing that API in isolation and reworking it later would cost more than waiting.
+**`pulsar-decoder`** is the typed event decoder, the correctness boundary for every downstream consumer. It shipped as a placeholder in v0.1.0-contracts and got its real content once the app repo had proved what shape consumers need: it decodes `ScVal` values and topic lists into the `DecodedValue` taxonomy fixed by pulsar-app ADR-023. It is not published yet; that is the v0.2.0-contracts release.
 
 The two share a repo because they co-evolve. A new decoder capability needs a fixture to prove it, and a new showcase function exists to produce one.
 
@@ -30,11 +30,9 @@ Note that the Go indexer reimplements decoding rather than calling into the Rust
 
 ## 4. Current phase and definition of done
 
-**Phase 6, Sprint 1. Build sequence Phase A, scaffolding.** Current release target: `v0.1.0-contracts`.
+**`v0.1.0-contracts` is released.** Current release target: `v0.2.0-contracts`, the decoder crate's first release. Its scope and exit gates are in `docs/roadmap-core.md`.
 
-Sprint 1 covers build steps 1 through 28 and is done when the contract skeleton compiles: workspace and toolchain pinned, agent context files in place, CI green, `error.rs` and `storage.rs` and `events.rs` complete, and `contract.rs` holding a contract struct with an empty impl block. No public functions yet. Those are Sprint 2.
-
-`v0.1.0-contracts` as a whole is done when all of the following hold:
+`v0.1.0-contracts` was done when all of the following held, and they all do:
 
 - Every public function has a happy-path test and at least one failure-path test
 - Every variant of the error enum is triggered by at least one test
@@ -100,7 +98,7 @@ stellar contract deploy \
   --network testnet
 ```
 
-`scripts/build.sh` and `scripts/deploy-testnet.sh` wrap the last two blocks and land at build steps 53 and 54. Until then, run the commands directly.
+`scripts/build.sh` and `scripts/deploy-testnet.sh` wrap the last two blocks, with preflight checks on the artifact and the identity.
 
 Coverage.
 
@@ -110,31 +108,31 @@ cargo llvm-cov --workspace   # floor is 85 percent line coverage
 
 ## 8. State at the time of writing
 
-Build steps 1 through 31 have landed. Phases A and B are complete and Phase C is
-under way. Next is step 32, the deposit happy path.
+The Phase 6 build sequence is complete. All 57 steps have landed and
+`v0.1.0-contracts` is tagged and released.
 
-Steps 29, 30, and 31 landed as a single commit. The sequence splits them into a
-happy path test, the implementation, and a rejection test, but in Rust a test
-calling a function that does not exist is a compile error rather than a failing
-assertion, so committing a test alone would leave the branch unbuildable. Tests
-are still written first and the RED state verified locally; it just does not get
-its own commit. See ADR-014. Expect the same collapse wherever the sequence pairs
-a test step with the implementation step that follows it.
+`contracts/showcase` is complete: 8 public functions (six state-changing, two
+read views) and six event types, covered by 54 tests at 98.7 percent line
+coverage. It is deployed to testnet and initialized; the contract ID, admin, and
+wasm hash are in the README's Deployment section. The optimized artifact is 11834
+bytes for `wasm32v1-none`. That number is a reachability signal: code nothing
+calls is stripped, so a commit adding a caller should grow it.
 
-`contracts/showcase` holds the full skeleton: the error enum, storage helpers with
-TTL discipline, six event structs, and the contract type with `initialize`
-implemented. The remaining public functions land one at a time, each with tests.
+Where the sequence paired a test step with the implementation step after it, the
+two landed as one commit, because in Rust a test calling a missing function is a
+compile error, not a failing assertion. Tests were still written first and the
+RED state verified locally. See ADR-014.
 
-Two `#![allow(dead_code)]` attributes remain, in `storage.rs` and `events.rs`.
-They come out incrementally as public functions acquire callers for the helpers
-and events each module holds, not all at once.
+`crates/pulsar-decoder` holds the real decoder (PRs #5 and #6, ADR-020 and
+ADR-021): `Decoder::decode_base64`, `decode_topics`, and `decode` map every
+`ScVal` variant to the `DecodedValue` taxonomy, degrading unnameable variants to
+`unknown` with a counter rather than erroring. It has 50 unit tests and a fixture
+suite over a 31-case corpus copied from the Go indexer's testdata, at 94.8
+percent line coverage. It is `publish = false`. Event assembly, a fuzz target,
+and the crates.io publish remain for `v0.2.0-contracts`.
 
 `Cargo.lock` is committed. It holds `ed25519-dalek` at 2.2.0 because
 soroban-env-host declares an unbounded `>=2.0.0` requirement and 3.0.0 broke the
 trait bounds its own code relies on.
 
-The crate builds for `wasm32v1-none` at 6260 bytes. That number is a reachability
-signal: helpers and events that nothing calls are stripped from the artifact, so
-a commit adding a caller should grow it.
-
-No deployment, no published crate.
+Deployed to testnet. No published crate.
