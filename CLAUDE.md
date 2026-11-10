@@ -16,9 +16,14 @@ Out of scope here: TypeScript SDK, Go indexer, Next.js explorer, GitBook docs. I
 
 ## Current phase
 
-Phase 6, Sprint 1. Build sequence Phase A (scaffolding).
+`v0.2.0-contracts`, the `pulsar-decoder` crate's first release.
 
-Steps 1 through 8 have landed. **Next: step 9**, `chore(agent): add .agent/context.md with full onboarding content`.
+The Phase 6 build sequence is complete: all 57 steps have landed and
+`v0.1.0-contracts` is released, with the showcase contract live on testnet. The
+decoder's value and topic decoding is merged (PRs #5 and #6, ADR-020 and
+ADR-021). Remaining for `v0.2.0-contracts`: event assembly (`DecodedEvent`), a
+fuzz target, and the crates.io publish, per `docs/roadmap-core.md`. Detail in
+`.agent/context.md` section 8.
 
 Do not skip forward in the build sequence. If a step reveals a design gap, halt and ask.
 
