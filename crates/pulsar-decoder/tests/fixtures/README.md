@@ -26,6 +26,11 @@ its maximum, `i32` and `i64` at their minimums, `u64` at its maximum, `i128` at
 its minimum, 256-bit values, a nested `vec`, a `map` with a non-string key, and
 the four types ADR-023 routes to the `unknown` fallback.
 
+**`string_invalid_utf8`** is a string holding a lone `0xFF` and the first two
+bytes of `€` (`bad FF x E2 82 end`). It pins ADR-051: one U+FFFD per maximal
+invalid subpart, so two here. The expected JSON is this decoder's output, checked
+against pulsar-core's Rust decoder and the SDK, which produce the same value.
+
 ## Regenerating
 
 There is no generator committed. A fixture is a recorded observation, and a
